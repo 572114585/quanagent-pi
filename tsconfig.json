@@ -21,6 +21,9 @@
 			"@earendil-works/pi-agent-core/harness/session/testing": [
 				"./packages/agent/src/harness/session/testing/index.ts"
 			],
+			"@earendil-works/pi-agent-core/experimental/pico3": [
+				"./packages/agent/src/harness/pico3/index.ts"
+			],
 			"@earendil-works/pi-agent-core/node": ["./packages/agent/src/node.ts"],
 			"@earendil-works/pi-agent-core/*": [
 				"./packages/agent/src/*.ts",
