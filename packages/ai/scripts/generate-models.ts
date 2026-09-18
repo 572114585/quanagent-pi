@@ -1024,7 +1024,11 @@ function applyThinkingLevelMetadata(model: Model<any>): void {
 	if (model.api === "anthropic-messages" && isAnthropicTemperatureUnsupportedModel(model.id)) {
 		mergeAnthropicMessagesCompat(model, { supportsTemperature: false });
 	}
-	if (model.api === "openai-completions" && model.id.includes("deepseek-v4")) {
+	if (
+		model.api === "openai-completions" &&
+		model.id.includes("deepseek-v4") &&
+		model.thinkingLevelMap === undefined
+	) {
 		mergeThinkingLevelMap(
 			model,
 			model.provider === "openrouter"
@@ -1306,6 +1310,7 @@ async function fetchAiGatewayModels(): Promise<Model<any>[]> {
 				provider: "vercel-ai-gateway",
 				reasoning: tags.includes("reasoning"),
 				input,
+				compat: { allowEmptySignature: true },
 				cost: {
 					input: inputCost,
 					output: outputCost,
@@ -2180,10 +2185,12 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					}
 				}
 
-				const thinkingLevelMap =
-					api === "google-generative-ai"
-						? getGoogleThinkingLevelMap(modelId, m.reasoning_options ?? [])
-						: undefined;
+				let thinkingLevelMap: NonNullable<Model<Api>["thinkingLevelMap"]> | undefined;
+				if (api === "google-generative-ai") {
+					thinkingLevelMap = getGoogleThinkingLevelMap(modelId, m.reasoning_options ?? []);
+				} else if (variant.provider === "opencode-go" && modelId === "deepseek-v4.1-flash") {
+					thinkingLevelMap = getEffortThinkingLevelMap(m.reasoning_options ?? []);
+				}
 				models.push({
 					id: modelId,
 					name: m.name || modelId,
