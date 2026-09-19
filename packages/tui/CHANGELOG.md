@@ -12,6 +12,7 @@
 
 ### Fixed
 
+- Fixed LaTeX legacy font switches falling back to raw source, centered `cases` layouts around surrounding equations, and vertically laid out unsupported and nested display scripts ([#8827](https://github.com/earendil-works/pi/issues/8827), [#9564](https://github.com/earendil-works/pi/issues/9564), [#7929](https://github.com/earendil-works/pi/issues/7929)).
 - Fixed fullscreen clipboard failures hiding actionable backend error messages behind a generic notice, and extended failure notices to five seconds ([#9618](https://github.com/earendil-works/pi/issues/9618)).
 
 ## [0.85.1] - 2026-09-05
