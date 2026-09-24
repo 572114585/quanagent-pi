@@ -5,6 +5,7 @@
 ### Fixed
 
 - Fixed `/skill` autocomplete appearing empty when loaded skill names did not contain the letters in `skill` ([#9944](https://github.com/earendil-works/pi/issues/9944)).
+- Fixed path and `@` autocomplete not working after opening wrappers such as `(`, `[`, `{`, `<`, or a backtick, e.g. `(~/Dev<Tab>`.
 
 ## [0.87.1] - 2026-09-22
 
