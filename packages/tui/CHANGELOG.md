@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `"auto"` to `TuiAltScreenOptions.wheelScrollLines`, which accelerates fast wheel spins on terminals that send one event per notch, and `TuiAltScreen.setWheelScrollLines()` for runtime updates ([#9758](https://github.com/earendil-works/pi/issues/9758)).
+
 ### Fixed
 
 - Fixed `/skill` autocomplete appearing empty when loaded skill names did not contain the letters in `skill` ([#9944](https://github.com/earendil-works/pi/issues/9944)).
