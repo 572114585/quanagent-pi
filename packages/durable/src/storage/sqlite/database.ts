@@ -21,7 +21,8 @@ export interface SqliteExecutor {
  * All operations are asynchronous so adapters may execute outside the harness runtime.
  *
  * `transaction` passes the callback a transaction handle. All work in the transaction
- * must use that handle; the handle is invalid after the callback settles. Adapters must
+ * must use that handle; calling the database itself from inside the callback waits for the
+ * transaction and never completes. The handle is invalid after the callback settles. Adapters must
  * queue unrelated operations and other transactions until the transaction finishes. The
  * returned promise settles after commit or rollback.
  *

@@ -193,21 +193,6 @@ describe("portable SQLite facade settlement", () => {
 		await database.close();
 	});
 
-	it("rejects database operations from inside a transaction callback instead of waiting forever", async () => {
-		const database = await openNodeSqliteDatabase(":memory:");
-		await database.exec("CREATE TABLE misuse_probe (value INTEGER)");
-		const misuse = "Use the transaction handle inside a transaction callback";
-		await expect(database.transaction(() => database.exec("SELECT 1"))).rejects.toThrow(misuse);
-		await expect(database.transaction(() => database.all("SELECT value FROM misuse_probe"))).rejects.toThrow(misuse);
-		await expect(database.transaction(() => database.transaction(async () => undefined))).rejects.toThrow(
-			"Nested SQLite transactions are not supported",
-		);
-		await expect(database.transaction(() => database.close())).rejects.toThrow(
-			"Cannot close SQLite during an active transaction",
-		);
-		await database.close();
-	});
-
 	it("rejects a transaction handle used after its transaction settles", async () => {
 		const database = await openNodeSqliteDatabase(":memory:");
 		await database.exec("CREATE TABLE stale_probe (value INTEGER)");

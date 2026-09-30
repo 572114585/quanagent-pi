@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { StatementSync } from "node:sqlite";
@@ -97,8 +96,6 @@ class NodeSqliteTransaction extends NodeSqliteExecutor {
 /** `SqliteDatabase` adapter backed by Node's built-in `node:sqlite`. */
 export class NodeSqliteDatabase extends NodeSqliteExecutor implements SqliteDatabase {
 	private readonly access = new SerialOperationQueue();
-	/** Detects database calls from inside a transaction callback, which would otherwise wait for that transaction forever. */
-	private readonly transactionScope = new AsyncLocalStorage<TransactionScope>();
 	private closed = false;
 
 	constructor(database: DatabaseSync) {
@@ -106,16 +103,11 @@ export class NodeSqliteDatabase extends NodeSqliteExecutor implements SqliteData
 	}
 
 	transaction<T>(callback: (transaction: SqliteExecutor) => Promise<T>): Promise<T> {
-		if (this.insideTransaction()) {
-			return Promise.reject(new Error("Nested SQLite transactions are not supported"));
-		}
 		return this.access.run(async () => {
 			this.database.exec("BEGIN IMMEDIATE");
 			const scope = { active: true };
 			try {
-				const result = await this.transactionScope.run(scope, () =>
-					callback(new NodeSqliteTransaction(this.database, this.statements, scope)),
-				);
+				const result = await callback(new NodeSqliteTransaction(this.database, this.statements, scope));
 				scope.active = false;
 				this.database.exec("COMMIT");
 				return result;
@@ -132,9 +124,6 @@ export class NodeSqliteDatabase extends NodeSqliteExecutor implements SqliteData
 	}
 
 	close(): Promise<void> {
-		if (this.insideTransaction()) {
-			return Promise.reject(new Error("Cannot close SQLite during an active transaction"));
-		}
 		return this.access.run(() => {
 			if (this.closed) return;
 			this.closed = true;
@@ -148,14 +137,7 @@ export class NodeSqliteDatabase extends NodeSqliteExecutor implements SqliteData
 	}
 
 	protected runOperation<T>(operation: () => T): Promise<T> {
-		if (this.insideTransaction()) {
-			return Promise.reject(new Error("Use the transaction handle inside a transaction callback"));
-		}
 		return this.access.run(operation);
-	}
-
-	private insideTransaction(): boolean {
-		return this.transactionScope.getStore()?.active === true;
 	}
 }
 
