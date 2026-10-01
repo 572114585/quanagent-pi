@@ -158,7 +158,7 @@ import {
 	formatAuthSelectorProviderType,
 	OAuthSelectorComponent,
 } from "./components/oauth-selector.ts";
-import { piLogoLines } from "./components/pi-logo.ts";
+import { piLogoLines, piWordmark, supportsPiLogo } from "./components/pi-logo.ts";
 import { playPiLogoAnimation } from "./components/pi-logo-animation.lazy.ts";
 import { createLoginMenuSelector } from "./components/radius-login-selector.ts";
 import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.ts";
@@ -996,8 +996,11 @@ export class InteractiveMode {
 		if (this.shouldShowStartupHeader()) {
 			const showDetails = this.shouldShowStartupDetails();
 			// Built on demand so the header follows theme changes. The logo's first line carries the version,
-			// its second line the first line of key hints.
+			// its second line the first line of key hints. Terminals that cannot render the logo get a
+			// "Pi vX" line instead, with the key hints below it.
+			const showLogo = supportsPiLogo();
 			const withLogo = (hints: string) => {
+				if (!showLogo) return `${piWordmark()} ${theme.fg("dim", `v${this.version}`)}\n${hints}`;
 				const [top, bottom] = piLogoLines();
 				return `${top} ${theme.fg("dim", `v${this.version}`)}\n${bottom} ${hints}`;
 			};
@@ -1052,7 +1055,7 @@ export class InteractiveMode {
 				1,
 				0,
 			);
-			header.onLogoClick = (column, row) => playPiLogoAnimation(this.renderer, column, row);
+			if (showLogo) header.onLogoClick = (column, row) => playPiLogoAnimation(this.renderer, column, row);
 			this.builtInHeader = header;
 
 			// Setup UI layout
