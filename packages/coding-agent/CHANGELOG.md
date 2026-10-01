@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `/arminsayshi` now plays a 3D version in fullscreen mode, with one cube per pixel of Armin. The 3D pi logo easter egg on header logo click is replaced by it.
+
 ## [1.0.0] - 2026-10-01
 
 ### New Features
