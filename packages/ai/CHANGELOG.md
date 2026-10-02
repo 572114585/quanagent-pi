@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added Cloudflare's Clef and Clef Flash classifier models (`@cf/cloudflare/clef`, `@cf/cloudflare/clef-flash`) to the `cloudflare-workers-ai` provider ([#10316](https://github.com/earendil-works/pi/pull/10316) by [@ndisidore](https://github.com/ndisidore), [#10322](https://github.com/earendil-works/pi/pull/10322) by [@RealAlexandreAI](https://github.com/RealAlexandreAI))
+
 ### Changed
 
 - Anthropic models with native mid-conversation tool changes now use the `inline-tools-2026-09-15` beta: later tools are defined by value in `tool_addition` blocks instead of being appended to the top-level tool list, and redefining a tool under the same name no longer falls back to resending the full tool list, so the prompt cache survives it. Upgraded `@anthropic-ai/sdk` to 0.129.0.
