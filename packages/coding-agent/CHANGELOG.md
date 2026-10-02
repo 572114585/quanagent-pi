@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added a copy key (`app.message.copy`, default `ctrl+x`) to OAuth sign-in screens in `/login`, `/mcp`, and `/mcp login`, which copies the sign-in URL when the browser cannot be opened or the wrapped link cannot be selected.
+
 ## [1.0.0] - 2026-10-01
 
 ### New Features
