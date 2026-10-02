@@ -34,7 +34,7 @@ On Windows:
 powershell -c "irm https://pi.dev/install.ps1 | iex"
 ```
 
-Alternatively, install directly with npm:
+The installer pins all dependencies and updates Pi with `pi update`. Alternatively, install directly with npm, which does not pin transitive dependencies:
 
 ```bash
 npm install -g --ignore-scripts @earendil-works/pi-coding-agent
