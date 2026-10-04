@@ -20,7 +20,9 @@ registerEnvConformance(
 		try {
 			await use(new NodeExecutionEnv({ cwd }));
 		} finally {
-			rmSync(cwd, { recursive: true, force: true });
+			// On Windows, `taskkill /T` runs asynchronously, so a killed command's descendants can still hold the
+			// directory briefly after `exec` settles; retry on EBUSY.
+			rmSync(cwd, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 		}
 	},
 	// Git Bash's `ln -s` copies instead of linking unless native symlinks are enabled.
@@ -35,7 +37,7 @@ describe("NodeExecutionEnv readers", () => {
 		return dir;
 	};
 	afterEach(() => {
-		for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+		for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 	});
 
 	it("reads ranges spanning several internal chunks exactly", async () => {
