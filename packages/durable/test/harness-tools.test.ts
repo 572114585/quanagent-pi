@@ -361,7 +361,7 @@ describe("tool results", () => {
 		});
 		expect(windows).toContainEqual(undefined);
 		// 8 bytes written, 8 skipped, then "x\n" dropped by the window: 3 lines, 18 bytes in all.
-		expect(resultText(results(entries)[0]!)).toBe(
+		expect(resultText(results(entries).find((result) => result.toolCallId === "c1")!)).toBe(
 			"y\n|<harness>\n[warn] Output truncated to its end: 3 lines, 18 bytes dropped\n</harness>",
 		);
 		await harness.close(context);

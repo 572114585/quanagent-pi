@@ -2846,7 +2846,11 @@ stdout and stderr apart collects them separately, bounds them itself, and
 aborts the call when it has enough. `openBinaryReader` opens one regular file
 for positional reads, so a host reads a bounded range instead of the whole
 file, and every read sees the file it opened even if the path is renamed;
-`noFollow` refuses a symbolic link as the final path component. `openDirReader`
+`noFollow` refuses a symbolic link as the final path component. Its
+`scanLines` makes one pass over the file inside the environment and reports
+the newline count, the byte range of a span of lines, and the decoded sizes of
+that span and its first line, so a caller can count and locate lines without
+moving the file. `openDirReader`
 pages a directory in file-system order, reading metadata only for the entries
 it returns and skipping entries removed meanwhile. All operations stop when
 their context is aborted, and only that call's work stops: a timeout or abort
@@ -3053,7 +3057,14 @@ if any, and `details` is the tool's last reported value, if any.
 `@earendil-works/pi-durable/tools` provides `read`, `write`, `edit`, and `bash`
 factories, ported from the agent harness tools, and the `CodingTools` extension
 with all four. They use only `api.env`; nothing
-installs them automatically. `read` does not return images yet. `edit` and
+installs them automatically. `read` does not return images yet. It reads a
+file through `openBinaryReader`: image detection reads the header (and a PNG's
+chunk headers), `scanLines` counts and locates the selected lines, and only the
+shown head is read and decoded, so its cost and transfer are bounded by the
+output limits plus one pass over the file inside the environment. Its result is
+exactly that of decoding the whole file, splitting it into lines, and
+truncating the selection. A file that changes while it is read is read again
+once, then fails. `edit` and
 `write` serialize their read-modify-write of one file within the process, keyed
 by the environment's `FileSystem.id` (equal ids see the same files at the same
 paths) and the canonical path, so two calls with fresh environment objects for

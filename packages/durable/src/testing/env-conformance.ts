@@ -85,6 +85,47 @@ export function createEnvConformance(options: EnvConformanceOptions): readonly E
 			assert.strictEqual(errorCode(await reader.info(context)), "invalid");
 		}),
 
+		createCase("binary reader scans lines like decoding the whole file", async (env) => {
+			// A byte-order mark, an invalid sequence before a newline, an empty line, a later U+FEFF, and no final newline.
+			const bytes = Uint8Array.from([
+				0xef, 0xbb, 0xbf, 0x61, 0x0a, 0xe2, 0x82, 0x0a, 0x0a, 0xef, 0xbb, 0xbf, 0x62, 0x0a, 0xc3, 0xa9,
+			]);
+			getOrThrow(await env.writeFile("lines.txt", bytes, context));
+			const lines = new TextDecoder().decode(bytes).split("\n");
+			const reader = getOrThrow(await env.openBinaryReader("lines.txt", undefined, context));
+			try {
+				const ranges: [number, number | undefined][] = [
+					[0, undefined],
+					[0, 1],
+					[1, 3],
+					[2, 3],
+					[3, undefined],
+					[4, 9],
+				];
+				for (const [startLine, endLine] of ranges) {
+					const scan = getOrThrow(
+						await reader.scanLines({ startLine, ...(endLine === undefined ? {} : { endLine }) }, context),
+					);
+					const selected = lines.slice(startLine, endLine);
+					const range = (from: number, to: number) =>
+						new TextDecoder("utf-8", { ignoreBOM: from > 0 }).decode(bytes.subarray(from, to));
+					assert.strictEqual(scan.newlines, lines.length - 1);
+					assert.strictEqual(range(scan.start, scan.end), selected.join("\n"));
+					assert.strictEqual(scan.selectedBytes, encoder.encode(selected.join("\n")).length);
+					assert.strictEqual(range(scan.start, scan.firstLineEnd), lines[startLine]);
+					assert.strictEqual(scan.firstLineBytes, encoder.encode(lines[startLine]).length);
+				}
+				assert.partialDeepEqual(getOrThrow(await reader.scanLines({ startLine: 9 }, context)), {
+					start: bytes.length,
+					end: bytes.length,
+					selectedBytes: 0,
+				});
+				assert.strictEqual(errorCode(await reader.scanLines({ startLine: 2, endLine: 2 }, context)), "invalid");
+			} finally {
+				await reader.close(context);
+			}
+		}),
+
 		createCase("binary reader keeps reading the file it opened after a rename", async (env) => {
 			getOrThrow(await env.writeFile("a.txt", "one", context));
 			const reader = getOrThrow(await env.openBinaryReader("a.txt", undefined, context));
