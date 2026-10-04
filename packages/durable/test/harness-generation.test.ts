@@ -523,7 +523,7 @@ describe("generation", () => {
 			const values = livePublications(harness);
 			harness.resume();
 			const submission = await root.submit({ type: "input", content: "hi" }, context);
-			expect(await submission.wait(context)).toMatchObject({ status: "answered" });
+			expect(await submission.wait(context)).toMatchObject({ status: "done" });
 			await harness.close(context);
 			return values.some((value) => textOf(value.generation?.message as Message) === "partial");
 		};

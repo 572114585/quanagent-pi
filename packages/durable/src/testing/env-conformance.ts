@@ -200,10 +200,10 @@ export function createEnvConformance(options: EnvConformanceOptions): readonly E
 		}),
 
 		createCase("argv exec distinguishes timeout from abort", async (env) => {
-			const timedOut = await env.exec([...shell, "sleep 5"], { timeout: 0.1 }, context);
+			const timedOut = await env.exec([...shell, "sleep 2"], { timeout: 0.1 }, context);
 			assert.strictEqual(errorCode(timedOut), "timeout");
 			const controller = new AbortController();
-			const running = env.exec([...shell, "sleep 5"], undefined, withAbortSignal(controller.signal, context));
+			const running = env.exec([...shell, "sleep 2"], undefined, withAbortSignal(controller.signal, context));
 			setTimeout(() => controller.abort(), 100);
 			assert.strictEqual(errorCode(await running), "aborted");
 		}),
