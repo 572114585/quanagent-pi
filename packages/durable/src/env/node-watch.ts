@@ -7,7 +7,10 @@ import { FileError, type FileWatcher, type WatchChange, type WatchTarget } from 
 
 /** How `NodeExecutionEnv` watches. */
 export interface NodeWatchOptions {
-	/** Force a mode; by default `polling` is chosen for file systems that do not report remote changes. */
+	/**
+	 * Force a mode. By default `polling` is chosen on Windows, where native watchers keep directories open and so block
+	 * renaming their parents, and for file systems that do not report remote changes.
+	 */
 	mode?: "native" | "polling";
 	/** Interval between snapshots in `polling` mode; default 2000 ms. */
 	pollIntervalMs?: number;
@@ -157,8 +160,13 @@ export class NodeFileWatcher implements FileWatcher {
 			hidden: target.exclude?.hidden === true,
 			names: new Set(target.exclude?.names ?? []),
 		}));
+		// Windows refuses to rename a directory while another directory below it is open, and a native watcher keeps
+		// every watched directory open: watching would break renames of their parents, so Windows polls.
 		const mode =
-			options.mode ?? ((await anyUnreliable(resolved.map((target) => target.path))) ? "polling" : "native");
+			options.mode ??
+			(process.platform === "win32" || (await anyUnreliable(resolved.map((target) => target.path)))
+				? "polling"
+				: "native");
 		const watcher = new NodeFileWatcher(resolved, onChange, mode, options);
 		try {
 			await watcher.#sync(false);
