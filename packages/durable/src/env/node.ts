@@ -815,6 +815,8 @@ export class NodeExecutionEnv implements ExecutionEnv {
 		let file: Awaited<ReturnType<typeof openFile>> | undefined;
 		try {
 			file = await openFile(resolved, "r+");
+			// POSIX refuses to open a directory for writing; Windows opens it, so check explicitly.
+			if ((await file.stat()).isDirectory()) return err(new FileError("is_directory", "Is a directory", resolved));
 			await file.sync();
 			const afterSyncAbort = abortResult<void>(signal, resolved);
 			return afterSyncAbort ?? ok(undefined);

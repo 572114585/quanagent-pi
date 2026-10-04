@@ -568,15 +568,20 @@ describe("durable tools", () => {
 					execution.cwd = workspace;
 					execution.env = { PI_BASH_PREPARE_EXPLICIT: "explicit" };
 					execution.inheritEnv = false;
-					execution.command += `\nprintf '%s:%s:%s:%s' "$prefix" "\${PI_BASH_PREPARE_INHERITED-}" "$PI_BASH_PREPARE_EXPLICIT" "$PWD"`;
+					execution.command += `\n: > prepared-cwd\nprintf '%s:%s:%s' "$prefix" "\${PI_BASH_PREPARE_INHERITED-}" "$PI_BASH_PREPARE_EXPLICIT"`;
+					// Git Bash on Windows reports $PWD as an MSYS path, so only POSIX compares it.
+					if (process.platform !== "win32") execution.command += `\nprintf ':%s' "$PWD"`;
 				},
 			});
 			const result = await run(tool, { command: ":" }, env, withAbortSignal(controller.signal, BACKGROUND_CONTEXT));
 			expect(receivedEnv).toBe(env);
 			expect(receivedSignal).toBe(controller.signal);
-			expect(result.output.join("")).toBe(
-				`ready::explicit:${getOrThrow(await env.canonicalPath(workspace, BACKGROUND_CONTEXT))}`,
-			);
+			const pwd =
+				process.platform === "win32"
+					? ""
+					: `:${getOrThrow(await env.canonicalPath(workspace, BACKGROUND_CONTEXT))}`;
+			expect(result.output.join("")).toBe(`ready::explicit${pwd}`);
+			expect(getOrThrow(await env.exists(`${workspace}/prepared-cwd`, BACKGROUND_CONTEXT))).toBe(true);
 		});
 
 		it("supports command prefixes", async () => {

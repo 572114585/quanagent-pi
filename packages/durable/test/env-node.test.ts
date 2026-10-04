@@ -125,7 +125,9 @@ afterEach(async () => {
 			await chmod(path, 0o700);
 		} catch {}
 	}
-	for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+	// On Windows, `taskkill /T` runs asynchronously, so a killed command's descendants can still hold the directory
+	// briefly after `exec` settles; retry on EBUSY.
+	for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 });
 
 describe("NodeExecutionEnv filesystem", () => {
@@ -571,13 +573,15 @@ describe("NodeExecutionEnv shell", () => {
 		const env = new NodeExecutionEnv({ cwd: root });
 		const collected = await collectShellOutput(
 			env,
-			'printf \'%s:%s\' "$PWD" "$NODE_ENV_TEST"',
+			'printf \'%s\' "$NODE_ENV_TEST" > cwd-marker.txt; printf \'%s:%s\' "$PWD" "$NODE_ENV_TEST"',
 			{ env: { NODE_ENV_TEST: "ok" } },
 			BACKGROUND_CONTEXT,
 		);
 		const result = getOrThrow(collected.result);
-		expect(collected.output).toBe(`${await realpath(root)}:ok`);
 		expect(result.exitCode).toBe(0);
+		expect(readFileSync(join(root, "cwd-marker.txt"), "utf8")).toBe("ok");
+		// Git Bash on Windows reports $PWD as an MSYS path (/tmp/...), not the Windows path.
+		if (process.platform !== "win32") expect(collected.output).toBe(`${await realpath(root)}:ok`);
 	});
 
 	it.each([
