@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `FileSystem` requires `openBinaryReader()` and `openDirReader()`; custom environments must implement them.
+- `Shell.exec()` accepts an argv array besides a shell string, and `ShellExecOptions.onOutput` receives a third `info` argument naming the stream (`stdout` or `stderr`); custom environments must accept both forms and pass the stream.
+
+### Added
+
+- `openBinaryReader()` for bounded positional reads of one opened regular file, with `noFollow` to refuse a final-component symlink.
+- `openDirReader()` for paged directory listings that read metadata only for returned entries.
+- Argv form of `exec()`, which runs a program without a shell.
+- `createEnvConformance()` and `registerEnvConformance()` in `@earendil-works/pi-durable/testing` for checking custom `ExecutionEnv` implementations.
+
 ### Fixed
 
 - `NodeExecutionEnv.flushFile()` on a directory fails with `is_directory` on Windows, as on POSIX.

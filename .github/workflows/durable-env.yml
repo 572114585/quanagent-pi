@@ -63,4 +63,4 @@ jobs:
 
       - name: Env tests
         working-directory: packages/durable
-        run: npx vitest --run test/env-node.test.ts test/env-node-spill.test.ts test/tools.test.ts
+        run: npx vitest --run test/env-node.test.ts test/env-node-spill.test.ts test/env-node-conformance.test.ts test/tools.test.ts

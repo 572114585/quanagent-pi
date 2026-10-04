@@ -2819,6 +2819,25 @@ sanitized, and throttled. The `bash` tool pipes those chunks into `output()`,
 reports the spill path as a diagnostic, and throws on a nonzero exit or timeout;
 the error result still carries the retained output and diagnostics.
 
+`exec` takes a string or an argv array. A string runs through the
+environment's shell. An array runs its first element directly with the rest as
+arguments, without a shell, so a host that builds a command from data, such as
+a file name, never quotes it for a particular shell. Each `onOutput` chunk names
+the stream it came from; the `bash` tool ignores it, while a host that needs
+stdout and stderr apart collects them separately, bounds them itself, and
+aborts the call when it has enough. `openBinaryReader` opens one regular file
+for positional reads, so a host reads a bounded range instead of the whole
+file, and every read sees the file it opened even if the path is renamed;
+`noFollow` refuses a symbolic link as the final path component. `openDirReader`
+pages a directory in file-system order, reading metadata only for the entries
+it returns and skipping entries removed meanwhile. All operations stop when
+their context is aborted, and only that call's work stops: a timeout or abort
+kills only that command's processes. `cleanup()` kills every command the
+environment still runs and belongs to its owner's shutdown, never to a single
+request. An environment is trusted, not a confinement boundary: checking a
+canonical path before opening it does not prevent a concurrent rename or
+symlink swap, so callers that restrict paths do so for hygiene, not security.
+
 The `details()` promise resolves after the corresponding or coalesced document
 commit. During normal settlement the tool task stops its throttle and awaits the
 commit in flight; the terminal commit, which appends the result entry, is the

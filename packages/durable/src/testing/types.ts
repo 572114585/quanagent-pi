@@ -1,3 +1,4 @@
+import type { ExecutionEnv } from "../env/index.ts";
 import type { Storage } from "../types.ts";
 
 export interface StorageConformanceAssertions {
@@ -17,6 +18,25 @@ export interface StorageConformanceOptions {
 }
 
 export interface StorageConformanceCase {
+	readonly name: string;
+	run(): Promise<void>;
+}
+
+export type EnvConformanceAssertions = StorageConformanceAssertions;
+
+/** Calls `use` once with an environment whose `cwd` is a fresh, empty, writable directory, then cleans up. */
+export type EnvConformanceProvider = (use: (env: ExecutionEnv) => Promise<void>) => Promise<void>;
+
+export interface EnvConformanceOptions {
+	readonly assertions: EnvConformanceAssertions;
+	readonly withEnv: EnvConformanceProvider;
+	/** Program and flag that run a POSIX shell script from the next argument; default `["sh", "-c"]`. */
+	readonly shell?: readonly string[];
+	/** Whether the shell's `ln -s` creates symbolic links; default true. */
+	readonly symlinks?: boolean;
+}
+
+export interface EnvConformanceCase {
 	readonly name: string;
 	run(): Promise<void>;
 }

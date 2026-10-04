@@ -246,6 +246,19 @@ const harness = await Harness.open(storage, {
 
 A throw from `env` becomes the call's error result. Without an environment, the built-in tools fail with an error result. A fresh environment object per call is fine: `edit` and `write` serialize changes to one file by the environment's `id` and path. A custom `ExecutionEnv` sets `id` so that equal ids see the same files at the same paths, for example one id per container.
 
+Hosts can use the environment directly too, for example to show a project's files. `openBinaryReader()` reads byte ranges of one opened file, `openDirReader()` pages a directory, and `exec()` with an argv array runs a program without a shell, reporting which stream each output chunk came from:
+
+```typescript
+const status = { stdout: "", stderr: "" };
+await env.exec(["git", "status", "--porcelain=v2", "-z"], {
+	onOutput: (text, _context, { stream }) => {
+		status[stream] += text;
+	},
+}, context);
+```
+
+Abort the context to stop one call; `cleanup()` is for shutting the environment down. A custom environment can check itself with `registerEnvConformance()` from `@earendil-works/pi-durable/testing`, like storage below.
+
 ## Reload
 
 Installing an extension with an installed name replaces it in place, in one step:

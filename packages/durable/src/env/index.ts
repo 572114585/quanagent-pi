@@ -92,6 +92,26 @@ export interface TextLineReader {
 	close(context: Context): Promise<void>;
 }
 
+/** Positional reads from one opened regular file; all calls see the same file even if its path is renamed. */
+export interface BinaryReader {
+	/** Metadata of the opened file, not of whatever its path names now. */
+	info(context: Context): Promise<Result<FileInfo, FileError>>;
+	/** Up to `length` bytes at `offset`; fewer only at end of file. */
+	read(offset: number, length: number, context: Context): Promise<Result<Uint8Array, FileError>>;
+	close(context: Context): Promise<void>;
+}
+
+/** Pages of one directory's entries. */
+export interface DirReader {
+	/**
+	 * Up to `maxEntries` entries in the order the file system returns them, continuing where the previous call stopped.
+	 * `done` marks the end; it may come with the last entries or with an empty page. An entry that disappears before its
+	 * metadata is read is skipped, as are entries of unsupported kinds. After a failed or aborted call, close the reader.
+	 */
+	next(maxEntries: number, context: Context): Promise<Result<{ entries: FileInfo[]; done: boolean }, FileError>>;
+	close(context: Context): Promise<void>;
+}
+
 /** Portable filesystem capability. Operations return failures rather than throwing. */
 export interface FileSystem {
 	/**
@@ -110,6 +130,16 @@ export interface FileSystem {
 		context: Context,
 	): Promise<Result<string[], FileError>>;
 	readBinaryFile(path: string, context: Context): Promise<Result<Uint8Array, FileError>>;
+	/**
+	 * Open a regular file for bounded positional reads. A directory fails with `is_directory`, other non-regular files
+	 * with `invalid`. With `noFollow`, a symbolic link as the final path component fails with `invalid` instead of being
+	 * followed; earlier components are still resolved.
+	 */
+	openBinaryReader(
+		path: string,
+		options: { noFollow?: boolean } | undefined,
+		context: Context,
+	): Promise<Result<BinaryReader, FileError>>;
 	writeFile(path: string, content: string | Uint8Array, context: Context): Promise<Result<void, FileError>>;
 	appendFile(path: string, content: string | Uint8Array, context: Context): Promise<Result<void, FileError>>;
 	/** Truncate or extend a file to exactly `size` bytes. */
@@ -119,6 +149,7 @@ export interface FileSystem {
 	renameFile(sourcePath: string, destinationPath: string, context: Context): Promise<Result<void, FileError>>;
 	fileInfo(path: string, context: Context): Promise<Result<FileInfo, FileError>>;
 	listDir(path: string, context: Context): Promise<Result<FileInfo[], FileError>>;
+	openDirReader(path: string, context: Context): Promise<Result<DirReader, FileError>>;
 	canonicalPath(path: string, context: Context): Promise<Result<string, FileError>>;
 	exists(path: string, context: Context): Promise<Result<boolean, FileError>>;
 	createDir(
@@ -157,17 +188,30 @@ export interface ShellExecOptions {
 	env?: Record<string, string>;
 	inheritEnv?: boolean;
 	timeout?: number;
-	/** Every decoded chunk of combined stdout and stderr as it arrives: raw, unbounded, and unthrottled. */
-	onOutput?: (text: string, context: Context) => void;
+	/**
+	 * Every decoded chunk of stdout and stderr as it arrives, in arrival order, with the stream it came from: raw,
+	 * unbounded, and unthrottled. Each stream is decoded separately, so a character split across chunks survives.
+	 */
+	onOutput?: (text: string, context: Context, info: ShellOutputInfo) => void;
 	spill?: ShellSpillOptions;
 }
 
+export interface ShellOutputInfo {
+	stream: "stdout" | "stderr";
+}
+
 export interface Shell {
+	/**
+	 * Run a command. A string runs through the environment's shell. An array runs `command[0]` directly with the rest
+	 * as its arguments, without a shell, so they reach the program unparsed. Aborting the context or a timeout kills
+	 * only this command's processes.
+	 */
 	exec(
-		command: string,
+		command: string | readonly string[],
 		options: ShellExecOptions | undefined,
 		context: Context,
 	): Promise<Result<ShellExecResult, ExecutionError>>;
+	/** Kill every command this environment still runs; for its owner's shutdown, never for one request. */
 	cleanup(context: Context): Promise<void>;
 }
 
