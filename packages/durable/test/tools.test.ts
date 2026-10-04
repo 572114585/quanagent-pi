@@ -23,6 +23,8 @@ import {
 	type Result,
 	type ShellExecOptions,
 	type ShellExecResult,
+	type ShellOutputSkip,
+	type ShellOutputWindow,
 } from "../src/env/index.ts";
 import { NodeExecutionEnv } from "../src/env/node.ts";
 import { withFileMutationQueue } from "../src/tools/file-mutation-queue.ts";
@@ -518,6 +520,32 @@ describe("durable tools", () => {
 	});
 
 	describe("bash", () => {
+		it("passes the retained window to the environment and forwards what it skipped", async () => {
+			const window: ShellOutputWindow = { maxBytes: 4, maxLines: 1, minIntervalMs: 100, bytesPerSecond: 1024 };
+			const skipped: ShellOutputSkip = { bytes: 6, newlines: 2, endsWithNewline: true };
+			let received: ShellOutputWindow | undefined;
+			class SkippingEnv extends NodeExecutionEnv {
+				override async exec(
+					_command: string | readonly string[],
+					options: ShellExecOptions | undefined,
+					context: Context,
+				): Promise<Result<ShellExecResult, ExecutionError>> {
+					received = options?.window;
+					options?.onOutput?.("tail\n", context, { stream: "stdout", skipped });
+					return { ok: true, value: { exitCode: 0 } };
+				}
+			}
+			const calls: [string, ShellOutputSkip | undefined][] = [];
+			const api = {
+				...fakeApi(new SkippingEnv({ cwd: createTempDir() })).api,
+				outputWindow: window,
+				output: (chunk: string | Uint8Array, skip?: ShellOutputSkip) => calls.push([String(chunk), skip]),
+			} as ToolExecutionApi;
+			await createBashTool().execute({ command: "anything" }, api, BACKGROUND_CONTEXT);
+			expect(received).toEqual(window);
+			expect(calls).toEqual([["tail\n", skipped]]);
+		});
+
 		it("streams combined stdout and stderr and returns no content of its own", async () => {
 			const result = await run(createBashTool(), { command: "printf out; printf err >&2" }, createEnv());
 			expect(result.output.join("")).toContain("out");

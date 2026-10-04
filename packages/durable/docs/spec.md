@@ -2820,6 +2820,23 @@ sanitized, and throttled. The `bash` tool pipes those chunks into `output()`,
 reports the spill path as a diagnostic, and throws on a nonzero exit or timeout;
 the error result still carries the retained output and diagnostics.
 
+An environment that moves output over a slow link, such as one on another host,
+need not move all of it. `api.outputWindow` names the tail a tail-retaining
+call keeps and the pace of its progress commits; the `bash` tool passes it as
+`ShellExecOptions.window`. The environment may then omit output and report
+the omission as `info.skipped` on the chunk that follows: the decoded byte
+count, the newline count, and whether the omitted text ended with a newline.
+It may omit only output followed by more than the window, by at least one byte
+or one line, and delivers all of that following output in the same chunk, so
+the omitted text can never be part of the kept tail and no progress commit sees
+a gap. `output(chunk, skipped)` adds the omission to the dropped counts, so
+the retained tail, the dropped counts, and the `truncated` diagnostic are the
+same as if every byte had arrived; only the moments at which progress is
+sampled differ. The environment should deliver no faster than the pace, since
+progress commits sample no faster. A head-retaining call has no window. A
+wrapper that replaces `output` to transform text sets `outputWindow` to
+`undefined`, so no omitted text bypasses its transform.
+
 `exec` takes a string or an argv array. A string runs through the
 environment's shell. An array runs its first element directly with the rest as
 arguments, without a shell, so a host that builds a command from data, such as

@@ -194,10 +194,51 @@ export interface ShellExecOptions {
 	 */
 	onOutput?: (text: string, context: Context, info: ShellOutputInfo) => void;
 	spill?: ShellSpillOptions;
+	/**
+	 * The caller keeps only this tail of the output, so the environment may omit output outside it and report the omission
+	 * as `info.skipped`. Without it, every chunk is delivered.
+	 */
+	window?: ShellOutputWindow;
+}
+
+/**
+ * The tail of the combined output a caller keeps, and how often it samples it. An environment that transfers output
+ * over a slow link uses it to omit what the caller would drop anyway and to send no faster than the caller commits.
+ */
+export interface ShellOutputWindow {
+	/** UTF-8 bytes of decoded text kept at the end of the output. */
+	maxBytes: number;
+	/** Lines kept at the end of the output. */
+	maxLines: number;
+	/** Minimum pause between the caller's samples of the output. */
+	minIntervalMs: number;
+	/** Each sample also pauses the caller in proportion to its size at this rate. */
+	bytesPerSecond: number;
+}
+
+/**
+ * Output an environment omitted, measured on the decoded text `onOutput` would have received: every U+FFFD counts as
+ * three bytes, and no sanitizing is applied.
+ */
+export interface ShellOutputSkip {
+	/** UTF-8 byte length of the omitted text. */
+	bytes: number;
+	/** Newlines (U+000A) in the omitted text. */
+	newlines: number;
+	/** Whether the omitted text ends with a newline. */
+	endsWithNewline: boolean;
 }
 
 export interface ShellOutputInfo {
 	stream: "stdout" | "stderr";
+	/**
+	 * Output omitted immediately before this chunk, only with `window`. The chunk then holds all output after the
+	 * omission up to its end, and that is more than the window by at least one byte or one line: more than
+	 * `window.maxBytes` bytes or more than `window.maxLines` newlines. So the omitted text can never be in the kept tail.
+	 * The omission and such a chunk may span both streams in arrival order; `stream` then names the chunk's last stream.
+	 * Callers that need the streams apart do not pass `window`.
+	 */
+	skipped?: ShellOutputSkip;
 }
 
 export interface Shell {

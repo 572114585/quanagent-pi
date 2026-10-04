@@ -14,7 +14,7 @@ import type {
 	Usage,
 	UserMessage,
 } from "@earendil-works/pi-ai";
-import type { ExecutionEnv } from "../env/index.ts";
+import type { ExecutionEnv, ShellOutputSkip, ShellOutputWindow } from "../env/index.ts";
 import type {
 	ConversationId,
 	ConversationOwnership,
@@ -173,8 +173,17 @@ export interface ToolExecutionApi<TDetails extends JsonValue = JsonValue> extend
 	agent(context: Context): Promise<Agent>;
 	/** Built by `HarnessOptions.env` for this call; `undefined` without an environment. */
 	readonly env: ExecutionEnv | undefined;
-	/** Append running output; it becomes the result content when the result omits `content`. */
-	output(chunk: string | Uint8Array): void;
+	/**
+	 * Append running output; it becomes the result content when the result omits `content`. `skipped` counts output
+	 * omitted before the chunk, as reported by an environment given `outputWindow` (`ShellOutputInfo.skipped`).
+	 */
+	output(chunk: string | Uint8Array, skipped?: ShellOutputSkip): void;
+	/**
+	 * The tail this call's output keeps and the pace of its progress commits, for `ShellExecOptions.window`; `undefined`
+	 * when the tool keeps the head of its output, which cannot accept skips. A wrapper that replaces `output` and
+	 * transforms text must also replace this with `undefined`, so skipped text cannot bypass its transform.
+	 */
+	readonly outputWindow: ShellOutputWindow | undefined;
 	/** Record a model-visible remark about this call. */
 	diagnostic(diagnostic: ToolDiagnostic): void;
 	/** Replace running details; the last value becomes the result details when the result omits `details`. */

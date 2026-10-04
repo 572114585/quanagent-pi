@@ -5,6 +5,7 @@ import type { EnvConformanceCase, EnvConformanceOptions } from "./types.ts";
 
 const context = BACKGROUND_CONTEXT;
 const decoder = new TextDecoder();
+const encoder = new TextEncoder();
 
 type EnvTest = (env: ExecutionEnv) => Promise<void>;
 
@@ -197,6 +198,42 @@ export function createEnvConformance(options: EnvConformanceOptions): readonly E
 				"spawn_error",
 			);
 			assert.strictEqual(errorCode(await env.exec([], undefined, context)), "spawn_error");
+		}),
+
+		createCase("windowed exec keeps the exact tail and counts what it skips", async (env) => {
+			const lines = 2000;
+			const window = { maxBytes: 200, maxLines: 5, minIntervalMs: 0, bytesPerSecond: 1_000_000_000 };
+			let bytes = 0;
+			let newlines = 0;
+			let tail = "";
+			const result = await env.exec(
+				[...shell, `i=0; while [ $i -lt ${lines} ]; do echo line-$i; i=$((i+1)); done`],
+				{
+					window,
+					onOutput: (text, _context, info) => {
+						if (info.skipped !== undefined) {
+							bytes += info.skipped.bytes;
+							newlines += info.skipped.newlines;
+							const after = encoder.encode(text).length;
+							const afterNewlines = text.split("\n").length - 1;
+							assert.ok(
+								after > window.maxBytes || afterNewlines > window.maxLines,
+								"a skip is followed by more than the window",
+							);
+							tail = "";
+						}
+						bytes += encoder.encode(text).length;
+						newlines += text.split("\n").length - 1;
+						tail += text;
+					},
+				},
+				context,
+			);
+			assert.strictEqual(getOrThrow(result).exitCode, 0);
+			const expected = Array.from({ length: lines }, (_, index) => `line-${index}\n`);
+			assert.strictEqual(bytes, expected.join("").length);
+			assert.strictEqual(newlines, lines);
+			assert.ok(tail.endsWith(expected.slice(-window.maxLines).join("")), "the delivered output ends with the tail");
 		}),
 
 		createCase("argv exec distinguishes timeout from abort", async (env) => {

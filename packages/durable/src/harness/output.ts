@@ -1,3 +1,4 @@
+import type { ShellOutputSkip } from "../env/index.ts";
 import { utf8ByteLength } from "../truncate.ts";
 
 /** Retention limits of one tool's output. */
@@ -128,12 +129,32 @@ export class OutputBuffer {
 		return this.#storedBytes;
 	}
 
-	/** Accept a chunk; returns whether anything was accepted. */
-	push(chunk: string | Uint8Array): boolean {
+	/**
+	 * Accept a chunk; returns whether anything was accepted. `skipped` is output omitted right before the chunk, which
+	 * must be more than the tail window by at least one byte or line (`ShellOutputInfo.skipped`); only tail retention
+	 * accepts it.
+	 */
+	push(chunk: string | Uint8Array, skipped?: ShellOutputSkip): boolean {
 		// Bytes of an incomplete character from an earlier byte chunk come first.
-		const text =
-			typeof chunk === "string" ? this.#decoder.decode() + chunk : this.#decoder.decode(chunk, { stream: true });
-		return this.#accept(text);
+		const pending = typeof chunk === "string" || skipped !== undefined ? this.#decoder.decode() : "";
+		const text = typeof chunk === "string" ? chunk : this.#decoder.decode(chunk, { stream: true });
+		if (skipped === undefined) return this.#accept(pending + text);
+		if (this.#limits.retain !== "tail") throw new Error("Skipped output requires tail retention");
+		this.#accept(pending);
+		this.#skip(skipped);
+		this.#accept(text);
+		return true;
+	}
+
+	/** Count omitted output; nothing stored before it can be in the window once the text after it arrives. */
+	#skip(skipped: ShellOutputSkip): void {
+		if (skipped.bytes === 0) return;
+		this.#totalBytes += skipped.bytes;
+		this.#totalNewlines += skipped.newlines;
+		this.#endsWithNewline = skipped.endsWithNewline;
+		this.#chunks = [];
+		this.#storedBytes = 0;
+		this.#storedNewlines = 0;
 	}
 
 	/** Flush an incomplete trailing character as a replacement character; call when the stream ends. */
@@ -178,10 +199,11 @@ export class OutputBuffer {
 		const kept = boundOutput(stored, this.#limits);
 		const storedLines = lines(this.#storedNewlines, stored === "" || stored.endsWith("\n"));
 		const keptLines = storedLines - kept.droppedLines;
-		// Tail windows never reach back before this one, so only the kept slice needs storing.
+		// Tail windows never reach back before this one, but finding a later window's first line needs what precedes it:
+		// keep the shortest suffix longer than the window by a byte or a line, as `#accept` does.
 		if (this.#limits.retain === "tail" || this.#chunks.length > 1) {
-			const text = this.#limits.retain === "tail" ? kept.text : stored;
-			const bytes = this.#limits.retain === "tail" ? kept.bytes : this.#storedBytes;
+			const text = this.#limits.retain === "tail" ? tailMargin(stored, this.#limits) : stored;
+			const bytes = this.#limits.retain === "tail" ? utf8ByteLength(text) : this.#storedBytes;
 			this.#chunks = text === "" ? [] : [{ text, bytes, newlines: countNewlines(text) }];
 			this.#storedBytes = bytes;
 			this.#storedNewlines = this.#chunks[0]?.newlines ?? 0;
@@ -192,6 +214,26 @@ export class OutputBuffer {
 			droppedLines: lines(this.#totalNewlines, this.#endsWithNewline) - keptLines,
 		};
 	}
+}
+
+/**
+ * The shortest suffix of `text` with more than `maxBytes` bytes or more than `maxLines` newlines, or all of it. The
+ * tail window of any text that ends with this suffix, followed by anything, is the same as of `text` followed by it.
+ */
+function tailMargin(text: string, limits: OutputLimits): string {
+	const bytes = encoder.encode(text);
+	const byteStart = bytes.length > limits.maxBytes ? characterEnd(bytes, bytes.length - limits.maxBytes - 1) : 0;
+	let lineStart = 0;
+	let newlines = 0;
+	for (let index = bytes.lastIndexOf(NEWLINE); index !== -1; index = bytes.lastIndexOf(NEWLINE, index - 1)) {
+		if (++newlines > limits.maxLines) {
+			lineStart = index;
+			break;
+		}
+		if (index === 0) break;
+	}
+	const start = Math.max(byteStart, lineStart);
+	return start === 0 ? text : decoder.decode(bytes.subarray(start));
 }
 
 /** Lines of text with `newlines` newlines; a final unterminated line counts. */
@@ -206,7 +248,7 @@ function countNewlines(text: string): number {
 }
 
 /** Each progress commit also buys a pause proportional to what it wrote. */
-const PROGRESS_BYTES_PER_SECOND = 100 * 1024;
+export const PROGRESS_BYTES_PER_SECOND = 100 * 1024;
 
 /**
  * Adaptive progress commits: the first change after an idle period commits at once; each commit then delays the next
