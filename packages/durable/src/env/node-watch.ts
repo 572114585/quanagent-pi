@@ -38,6 +38,12 @@ type Entry = {
 type Snapshot = Map<string, Entry>;
 
 const DEBOUNCE_MS = 50;
+/**
+ * On macOS, `fs.watch` returns before libuv's FSEvents stream is live, and changes in between are never reported
+ * (about 2% of changes made right after the call, none after 100 ms). A rescan this long after installing watchers
+ * catches them.
+ */
+const FSEVENTS_SETTLE_MS = 500;
 const DEFAULT_POLL_MS = 2000;
 const DEFAULT_MAX_DIRECTORIES = 10_000;
 /** In polling mode, recently modified small files are also compared by content: a second write within the file system's
@@ -130,6 +136,7 @@ export class NodeFileWatcher implements FileWatcher {
 	#mode: "native" | "polling";
 	#snapshot: Snapshot = new Map();
 	#timer: ReturnType<typeof setTimeout> | undefined;
+	#settleTimer: ReturnType<typeof setTimeout> | undefined;
 	#running: Promise<void> | undefined;
 	#dirty = false;
 	#closed = false;
@@ -193,6 +200,8 @@ export class NodeFileWatcher implements FileWatcher {
 		this.#closed = true;
 		clearTimeout(this.#timer);
 		this.#timer = undefined;
+		clearTimeout(this.#settleTimer);
+		this.#settleTimer = undefined;
 		for (const watcher of this.#watchers.values()) watcher.close();
 		this.#watchers.clear();
 	}
@@ -220,6 +229,15 @@ export class NodeFileWatcher implements FileWatcher {
 			this.#timer = undefined;
 			void this.#flush();
 		}, DEBOUNCE_MS);
+	}
+
+	#scheduleSettle(): void {
+		if (this.#closed) return;
+		clearTimeout(this.#settleTimer);
+		this.#settleTimer = setTimeout(() => {
+			this.#settleTimer = undefined;
+			void this.#flush();
+		}, FSEVENTS_SETTLE_MS);
 	}
 
 	#flush(): Promise<void> {
@@ -259,6 +277,7 @@ export class NodeFileWatcher implements FileWatcher {
 			if (report) for (const path of this.#diff(this.#snapshot, next)) changed.add(path);
 			this.#snapshot = next;
 			if (this.#mode === "polling" || !this.#reconcileWatchers(next)) break;
+			if (process.platform === "darwin") this.#scheduleSettle();
 			// Something written into a new directory before its watcher existed shows up in the next round.
 			report = true;
 		}
