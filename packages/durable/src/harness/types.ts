@@ -379,6 +379,17 @@ export type CompactionPolicy = {
 	backgroundTokens: number;
 };
 
+/**
+ * How often running progress is committed. Each progress commit is a storage write; a host whose storage is remote can
+ * commit less often, so live answers and tool output appear in larger steps.
+ */
+export type ProgressPolicy = {
+	/** Minimum pause between commits of the answer being generated. */
+	partialIntervalMs: number;
+	/** Minimum pause between commits of running tool output; large commits also pause in proportion to their size. */
+	outputIntervalMs: number;
+};
+
 /** Why a compaction runs: `compact()`, a threshold in generation preparation, or a context overflow. */
 export type CompactionReason = "manual" | "threshold" | "overflow";
 
@@ -395,6 +406,7 @@ export type HarnessSettings = {
 	readonly stream?: ConversationStreamOptions;
 	readonly retry?: Partial<ConversationRetryPolicy>;
 	readonly compaction?: Partial<CompactionPolicy>;
+	readonly progress?: Partial<ProgressPolicy>;
 	readonly toolExecution?: ToolExecutionMode;
 	readonly steeringMode?: QueueMode;
 	readonly followUpMode?: QueueMode;
@@ -407,6 +419,7 @@ export type Settings = {
 	readonly stream: ConversationStreamOptions;
 	readonly retry: ConversationRetryPolicy;
 	readonly compaction: CompactionPolicy;
+	readonly progress: ProgressPolicy;
 	readonly toolExecution: ToolExecutionMode;
 	readonly steeringMode: QueueMode;
 	readonly followUpMode: QueueMode;

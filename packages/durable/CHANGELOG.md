@@ -13,6 +13,7 @@
 - `openDirReader()` for paged directory listings that read metadata only for returned entries.
 - Argv form of `exec()`, which runs a program without a shell.
 - `createEnvConformance()` and `registerEnvConformance()` in `@earendil-works/pi-durable/testing` for checking custom `ExecutionEnv` implementations.
+- `settings.progress` with `partialIntervalMs` and `outputIntervalMs` configures how often generation partials and running tool output are committed; defaults stay 100 ms ([#10357](https://github.com/earendil-works/pi/issues/10357))
 
 ### Fixed
 

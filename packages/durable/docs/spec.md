@@ -2776,8 +2776,9 @@ invocation end. Throttled commits publish the retained output, dropped
 byte/line counts, and the current details and diagnostics in its `pi.live.tools`
 slot. The throttle is adaptive, like the environment's shell output capture: the
 first change after an idle period commits at once; each commit then delays the
-next by at least 100 ms and by its written size at 100 KiB/s, so a large
-rewrite buys a proportionally longer pause. Changes made during the delay
+next by at least `settings.progress.outputIntervalMs` (default 100 ms) and by
+its written size at 100 KiB/s, so a large rewrite buys a proportionally longer
+pause. Changes made during the delay
 coalesce into the next commit. The throttle is Harness policy, not part of
 `outputLimits`, which only bounds what is retained. Explicit
 text in explicit result content is bounded by the same limits before transcript
@@ -3441,7 +3442,8 @@ The run's inputs live in `pi.live.run`, not in the task input.
   interrupted attempt into an aborted `pi.assistant` entry. It then streams the
   model context through `cutoff` with the invocation signal, the thinking level
   as `reasoning` (omitted for `off`), the conversation's persisted provider
-  `sessionId`, and the pinned `streamOptions`, committing throttled partials.
+  `sessionId`, and the pinned `streamOptions`, committing throttled partials at
+  most every `settings.progress.partialIntervalMs` (default 100 ms).
   Before streaming, the `beforeRequest` chain may
   replace the messages for this request only. Recovery resends the same
   committed messages with the same pinned model, thinking level, and stream
