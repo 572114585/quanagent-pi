@@ -107,6 +107,36 @@ export interface BinaryReader {
 	close(context: Context): Promise<void>;
 }
 
+/** A file or directory to watch. It may be missing; creating it is a change. */
+export interface WatchTarget {
+	path: string;
+	/** Watch everything below a directory, not only its entries. Symbolic links below it are not followed. */
+	recursive?: boolean;
+	/** Entries below `path` that are neither watched nor reported: names starting with `.`, or these names. */
+	exclude?: { hidden?: boolean; names?: readonly string[] };
+}
+
+/**
+ * What changed:
+ * - `paths`: something at or below each path may have changed (a directory path covers its whole subtree). Calls may be
+ *   spurious; a change is never missed while the watcher is healthy.
+ * - `overflow`: coverage was uncertain for a while (lost events, reconnect); rescan everything that is watched.
+ * - `error`: the watcher stopped, for example because the watched tree grew past the environment's limit; no calls
+ *   follow.
+ */
+export type WatchChange = { paths: string[] } | { overflow: true } | { error: FileError };
+
+export interface FileWatcher {
+	/**
+	 * `native`: changes are reported within about two seconds. `polling`: the environment compares snapshots, because
+	 * the file system does not report changes reliably (network and FUSE file systems); a change undone between two
+	 * snapshots can be missed.
+	 */
+	readonly mode: "native" | "polling";
+	/** Stop watching; no `onChange` call starts after this resolves. Idempotent. */
+	close(context: Context): Promise<void>;
+}
+
 /** Where lines of a file are, as `BinaryReader.scanLines` found them. */
 export interface LineScan {
 	/** Newline bytes in the whole file; it has `newlines + 1` lines. */
@@ -175,6 +205,16 @@ export interface FileSystem {
 	fileInfo(path: string, context: Context): Promise<Result<FileInfo, FileError>>;
 	listDir(path: string, context: Context): Promise<Result<FileInfo[], FileError>>;
 	openDirReader(path: string, context: Context): Promise<Result<DirReader, FileError>>;
+	/**
+	 * Report changes to files and directories, for hosts that load resources from the environment. When the returned
+	 * watcher exists, coverage is established: a host that watches before it loads cannot miss a change made during the
+	 * load. See `WatchChange` for what is reported and `FileWatcher.mode` for how reliably.
+	 */
+	watch(
+		targets: readonly WatchTarget[],
+		onChange: (change: WatchChange) => void,
+		context: Context,
+	): Promise<Result<FileWatcher, FileError>>;
 	canonicalPath(path: string, context: Context): Promise<Result<string, FileError>>;
 	exists(path: string, context: Context): Promise<Result<boolean, FileError>>;
 	createDir(

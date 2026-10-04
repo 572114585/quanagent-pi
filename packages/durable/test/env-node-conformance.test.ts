@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { afterEach, describe, expect, it } from "vitest";
-import { getOrThrow } from "../src/env/index.ts";
+import { getOrThrow, type WatchChange } from "../src/env/index.ts";
 import { NodeExecutionEnv } from "../src/env/node.ts";
 import { registerEnvConformance } from "../src/testing/index.ts";
 
@@ -44,6 +44,50 @@ registerEnvConformance(
 	// Git Bash's `ln -s` copies instead of linking unless native symlinks are enabled.
 	windows ? { shell: [gitBash, "-c"], symlinks: false } : {},
 );
+
+registerEnvConformance(
+	{ describe, expect, it },
+	"NodeExecutionEnv conformance with polling watches",
+	async (use) => {
+		const cwd = mkdtempSync(join(tmpdir(), "pi-durable-env-conformance-"));
+		try {
+			await use(new NodeExecutionEnv({ cwd, watch: { mode: "polling", pollIntervalMs: 100 } }));
+		} finally {
+			await removeTempDir(cwd);
+		}
+	},
+	windows ? { shell: [gitBash, "-c"], symlinks: false } : {},
+);
+
+describe("NodeExecutionEnv watch limits", () => {
+	it("refuses a tree over the directory budget and stops with an error when one grows past it", async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "pi-durable-env-watch-"));
+		try {
+			const env = new NodeExecutionEnv({ cwd, watch: { maxDirectories: 3 } });
+			getOrThrow(await env.createDir("tree/a/b", undefined, context));
+			getOrThrow(await env.createDir("tree/c", undefined, context));
+			expect(await env.watch([{ path: "tree", recursive: true }], () => {}, context)).toMatchObject({
+				ok: false,
+				error: { code: "invalid" },
+			});
+
+			getOrThrow(await env.remove("tree/c", { recursive: true }, context));
+			const changes: WatchChange[] = [];
+			const watcher = getOrThrow(
+				await env.watch([{ path: "tree", recursive: true }], (change) => changes.push(change), context),
+			);
+			getOrThrow(await env.createDir("tree/d", undefined, context));
+			const deadline = Date.now() + 3000;
+			while (!changes.some((change) => "error" in change) && Date.now() < deadline) {
+				await new Promise((resolve) => setTimeout(resolve, 20));
+			}
+			expect(changes.at(-1)).toMatchObject({ error: { code: "invalid" } });
+			await watcher.close(context);
+		} finally {
+			await removeTempDir(cwd);
+		}
+	});
+});
 
 describe("NodeExecutionEnv readers", () => {
 	const dirs: string[] = [];

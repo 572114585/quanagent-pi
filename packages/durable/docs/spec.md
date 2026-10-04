@@ -2856,7 +2856,22 @@ it returns and skipping entries removed meanwhile. All operations stop when
 their context is aborted, and only that call's work stops: a timeout or abort
 kills only that command's processes. `cleanup()` kills every command the
 environment still runs and belongs to its owner's shutdown, never to a single
-request. An environment is trusted, not a confinement boundary: checking a
+request. `watch` reports changes to files and directories for hosts that load
+resources, such as instructions or skills, from the environment; Durable
+itself never calls it. A target may be missing, and creating it is a change; a
+recursive target covers its subtree except excluded entries, without following
+symbolic links below it. When `watch` resolves, coverage is established, so a
+host that watches before it loads cannot lose a change made during the load. A
+change arrives as reported paths (each covering its subtree; calls may be
+spurious), as `overflow` when coverage was uncertain for a while and everything
+must be rescanned, or as a final `error`. A `native` watcher reports changes
+within about two seconds; a `polling` one compares snapshots because its file
+system, for example a network or FUSE file system, does not report changes made
+elsewhere, and can miss a change undone between two snapshots. `NodeExecutionEnv`
+uses events only to trigger rescans and reports differences between snapshots,
+so replaced files, renamed parents, and directories created with their contents
+are reported whatever events the platform sends. An environment is trusted, not
+a confinement boundary: checking a
 canonical path before opening it does not prevent a concurrent rename or
 symlink swap, so callers that restrict paths do so for hygiene, not security.
 

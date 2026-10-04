@@ -31,6 +31,7 @@ import {
 	FileError,
 	type FileInfo,
 	type FileKind,
+	type FileWatcher,
 	type LineScan,
 	ok,
 	type Result,
@@ -40,8 +41,11 @@ import {
 	type TextLine,
 	type TextLineReader,
 	toError,
+	type WatchChange,
+	type WatchTarget,
 } from "./index.ts";
 import { LineScanner } from "./line-scan.ts";
+import { NodeFileWatcher, type NodeWatchOptions } from "./node-watch.ts";
 
 const MAX_TIMEOUT_MS = 2_147_483_647;
 const MAX_TIMEOUT_SECONDS = MAX_TIMEOUT_MS / 1000;
@@ -602,12 +606,39 @@ export class NodeExecutionEnv implements ExecutionEnv {
 	cwd: string;
 	private shellPath?: string;
 	private shellEnv?: NodeJS.ProcessEnv;
+	private watchOptions: NodeWatchOptions;
 	private activeChildPids = new Set<number>();
 
-	constructor(options: { cwd: string; shellPath?: string; shellEnv?: NodeJS.ProcessEnv }) {
+	constructor(options: { cwd: string; shellPath?: string; shellEnv?: NodeJS.ProcessEnv; watch?: NodeWatchOptions }) {
 		this.cwd = options.cwd;
 		this.shellPath = options.shellPath;
 		this.shellEnv = options.shellEnv;
+		this.watchOptions = options.watch ?? {};
+	}
+
+	async watch(
+		targets: readonly WatchTarget[],
+		onChange: (change: WatchChange) => void,
+		context: Context,
+	): Promise<Result<FileWatcher, FileError>> {
+		const aborted = abortResult<FileWatcher>(context.abortSignal);
+		if (aborted) return aborted;
+		try {
+			const watcher = await NodeFileWatcher.open(
+				targets,
+				(path) => resolvePath(this.cwd, path),
+				onChange,
+				this.watchOptions,
+			);
+			const afterOpenAbort = abortResult<FileWatcher>(context.abortSignal);
+			if (afterOpenAbort) {
+				await watcher.close(context);
+				return afterOpenAbort;
+			}
+			return ok(watcher);
+		} catch (error) {
+			return err(toFileError(error));
+		}
 	}
 
 	async absolutePath(path: string, _context: Context): Promise<Result<string, FileError>> {
@@ -1192,3 +1223,4 @@ export class NodeExecutionEnv implements ExecutionEnv {
 		this.activeChildPids.clear();
 	}
 }
+export type { NodeWatchOptions } from "./node-watch.ts";
