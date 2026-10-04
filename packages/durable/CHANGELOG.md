@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `NodeExecutionEnv.flushFile()` on a directory fails with `is_directory` on Windows, as on POSIX.
+
 ## [1.0.2] - 2026-10-04
 
 ### Fixed
