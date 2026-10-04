@@ -99,10 +99,13 @@ export function createEnvConformance(options: EnvConformanceOptions): readonly E
 	const assert = options.assertions;
 	const shell = options.shell ?? ["sh", "-c"];
 	const symlinks = options.symlinks ?? true;
-	const createCase = (name: string, test: EnvTest): EnvConformanceCase => ({
+	const createCase = (name: string, test: EnvTest, timeoutMs?: number): EnvConformanceCase => ({
 		name,
+		...(timeoutMs === undefined ? {} : { timeoutMs }),
 		run: () => options.withEnv(test),
 	});
+	// Watch cases wait up to three seconds per step, longer than test runners allow by default.
+	const watchCase = (name: string, test: EnvTest): EnvConformanceCase => createCase(name, test, 30_000);
 	const execCollect = async (env: ExecutionEnv, command: string | readonly string[], cwd?: string) => {
 		const output: Record<ShellOutputInfo["stream"], string> = { stdout: "", stderr: "" };
 		const result = await env.exec(
@@ -253,7 +256,7 @@ export function createEnvConformance(options: EnvConformanceOptions): readonly E
 			}
 		}),
 
-		createCase("watch reports a missing file's creation, changes, replacement and removal", async (env) => {
+		watchCase("watch reports a missing file's creation, changes, replacement and removal", async (env) => {
 			await watching(env, [{ path: "AGENTS.md" }], async ({ expectChange }) => {
 				await expectChange("AGENTS.md", async () => {
 					getOrThrow(await env.writeFile("AGENTS.md", "one", context));
@@ -275,7 +278,7 @@ export function createEnvConformance(options: EnvConformanceOptions): readonly E
 			});
 		}),
 
-		createCase("watch reports a missing target whose ancestors are created", async (env) => {
+		watchCase("watch reports a missing target whose ancestors are created", async (env) => {
 			await watching(env, [{ path: "a/b/c/AGENTS.md" }], async ({ expectChange }) => {
 				await expectChange("a/b/c/AGENTS.md", async () => {
 					getOrThrow(await env.writeFile("a/b/c/AGENTS.md", "x", context));
@@ -283,7 +286,7 @@ export function createEnvConformance(options: EnvConformanceOptions): readonly E
 			});
 		}),
 
-		createCase("watch follows directories created together with their contents", async (env) => {
+		watchCase("watch follows directories created together with their contents", async (env) => {
 			getOrThrow(await env.createDir("skills", undefined, context));
 			await watching(env, [{ path: "skills", recursive: true }], async ({ expectChange }) => {
 				// Written before any watcher on the new directories can exist.
@@ -299,7 +302,7 @@ export function createEnvConformance(options: EnvConformanceOptions): readonly E
 			});
 		}),
 
-		createCase("watch keeps watching a path whose parent is renamed and recreated", async (env) => {
+		watchCase("watch keeps watching a path whose parent is renamed and recreated", async (env) => {
 			getOrThrow(await env.writeFile("proj/.pi/skills/x.md", "x", context));
 			await watching(env, [{ path: "proj/.pi/skills", recursive: true }], async ({ expectChange }) => {
 				await expectChange("proj/.pi/skills", async () => {
@@ -314,7 +317,7 @@ export function createEnvConformance(options: EnvConformanceOptions): readonly E
 			});
 		}),
 
-		createCase("watch skips excluded entries and reports a rename out of them", async (env) => {
+		watchCase("watch skips excluded entries and reports a rename out of them", async (env) => {
 			getOrThrow(await env.createDir("skills", undefined, context));
 			const targets: WatchTarget[] = [
 				{ path: "skills", recursive: true, exclude: { hidden: true, names: ["node_modules"] } },
@@ -338,7 +341,7 @@ export function createEnvConformance(options: EnvConformanceOptions): readonly E
 			});
 		}),
 
-		createCase("watch stops reporting once closed", async (env) => {
+		watchCase("watch stops reporting once closed", async (env) => {
 			const changes: WatchChange[] = [];
 			const watcher = getOrThrow(await env.watch([{ path: "file.txt" }], (change) => changes.push(change), context));
 			assert.ok(watcher.mode === "native" || watcher.mode === "polling", "watcher reports its mode");

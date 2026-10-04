@@ -6,7 +6,7 @@ import type { EnvConformanceOptions, EnvConformanceProvider, StorageConformanceP
 export interface StorageConformanceRunner {
 	readonly describe: (name: string, suite: () => void) => unknown;
 	readonly expect: ExpectLike;
-	readonly it: (name: string, test: () => Promise<void>) => unknown;
+	readonly it: (name: string, test: () => Promise<void>, timeoutMs?: number) => unknown;
 }
 
 /** Registers the runner-independent cases with a Vitest/Jest-compatible test runner. */
@@ -33,6 +33,6 @@ export function registerEnvConformance(
 ): void {
 	const cases = createEnvConformance({ ...options, assertions: createExpectAssertions(runner.expect), withEnv });
 	runner.describe(name, () => {
-		for (const testCase of cases) runner.it(testCase.name, testCase.run);
+		for (const testCase of cases) runner.it(testCase.name, testCase.run, testCase.timeoutMs);
 	});
 }
