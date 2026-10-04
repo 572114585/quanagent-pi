@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added per-thinking-level sampling parameter overrides (`samplingParamsByThinkingLevel`) for `openai-completions`, `openai-responses`, and `azure-openai-responses` requests ([#9776](https://github.com/earendil-works/pi/pull/9776) by [@mrexodia](https://github.com/mrexodia))
+
 ## [1.0.1] - 2026-10-03
 
 ### Added
@@ -80,7 +84,6 @@
 - Added Sign in with ChatGPT to the `openai` provider: an OAuth login that uses a ChatGPT subscription with the OpenAI API. `Models.login()` accepts `LoginOptions` with `getDeviceId()`, which supplies a stable installation ID to login flows that need one. Subscription usage-limit errors are not retried and link to the ChatGPT usage page; temporary usage errors are retried.
 - Added the `llama-cpp-classify` classifier API, which answers classifier questions from llama-server's next-token probabilities for single-token answer labels.
 - Added optional `AssistantMessage.thinkingLevel`, which records the thinking level the agent loop requested for a response.
-- Added per-thinking-level model sampling parameter overrides for OpenAI-compatible requests.
 
 ### Changed
 
