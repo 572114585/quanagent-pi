@@ -1,6 +1,6 @@
 // Ported from packages/agent/test/harness/tools.test.ts and adapted to ToolRegistration: tools take the environment
 // from `api.env`, stream through `api.output()`, and report notices as diagnostics instead of content text.
-import { mkdirSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, rmSync } from "node:fs";
 import { symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -273,6 +273,27 @@ describe("durable tools", () => {
 			await expect(run(createReadTool(), { path: "short.txt", offset: 100 }, env)).rejects.toThrow(
 				"Offset 100 is beyond end of file (3 lines total)",
 			);
+		});
+
+		it("reads a log that grows while it is read", async () => {
+			const env = createEnv();
+			getOrThrow(await env.writeFile("app.log", "one\ntwo\n", BACKGROUND_CONTEXT));
+			const logPath = join(env.cwd, "app.log");
+			// Every read appends, as a busy writer would; the scanned lines stay as they were.
+			const growing = Object.create(env) as NodeExecutionEnv;
+			growing.openBinaryReader = async (path, options, context) => {
+				const opened = await env.openBinaryReader(path, options, context);
+				if (!opened.ok) return opened;
+				const reader = opened.value;
+				const read = reader.read.bind(reader);
+				reader.read = async (position, length, readContext) => {
+					appendFileSync(logPath, "more\n");
+					return read(position, length, readContext);
+				};
+				return opened;
+			};
+			const result = await run(createReadTool(), { path: "app.log", limit: 2 }, growing);
+			expect(textOutput(result)).toBe("one\ntwo");
 		});
 
 		it("reports images by content as unsupported", async () => {
