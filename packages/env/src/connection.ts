@@ -53,6 +53,8 @@ export interface ConnectionOptions {
 	command: readonly string[];
 	/** Receives the daemon's and the transport's diagnostic output. */
 	onLog?: (text: string) => void;
+	/** Runs before each start of the daemon, e.g. to verify or deploy it; a failure fails that start. */
+	beforeStart?: () => Promise<void>;
 }
 
 export interface Reply {
@@ -249,6 +251,13 @@ export class Connection {
 	async #start(): Promise<{ info: RemoteInfo; session: Session }> {
 		const [program, ...args] = this.#options.command;
 		if (program === undefined) throw new RemoteError({ code: "spawn_error", message: "No daemon command" });
+		try {
+			await this.#options.beforeStart?.();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new RemoteError({ code: "spawn_error", message, lost: true });
+		}
+		if (this.#closed) throw closed();
 		const token = randomBytes(16).toString("hex");
 		const child = spawn(program, [...args, "serve", "--token", token], { stdio: ["pipe", "pipe", "pipe"] });
 		const session = new Session(++this.#sessions, child, token);

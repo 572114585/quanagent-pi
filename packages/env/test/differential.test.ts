@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import type { Context } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
@@ -11,11 +11,8 @@ import { createBashTool, createReadTool } from "@earendil-works/pi-durable/tools
 import { afterAll, describe, expect, it } from "vitest";
 import { Connection } from "../src/connection.ts";
 import { RemoteExecutionEnv } from "../src/remote-env.ts";
+import { daemon } from "./daemon.ts";
 
-const daemon = resolve(
-	import.meta.dirname,
-	`../daemon/target/debug/pi-env${process.platform === "win32" ? ".exe" : ""}`,
-);
 const connection = new Connection({ command: [daemon] });
 const context: Context = BACKGROUND_CONTEXT;
 const dirs: string[] = [];

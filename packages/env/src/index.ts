@@ -13,6 +13,7 @@ export {
 	connectSsh,
 	deployDaemon,
 	detectPlatform,
+	forgetHostKey,
 	HostKeyChangedError,
 	HostKeyUnknownError,
 	packagedDaemon,

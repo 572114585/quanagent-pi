@@ -15,7 +15,7 @@ use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::UNIX_EPOCH;
 use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
 use windows_sys::Win32::Storage::FileSystem::{
@@ -259,7 +259,7 @@ impl<T: io::Read> Pipe for T {}
 /// Read `pipe` until it ends, `on_data` returns false, or `stop` is set; the pipe closes when this returns.
 pub fn read_pipe(mut pipe: impl Pipe, stop: &AtomicBool, mut on_data: impl FnMut(&[u8]) -> bool) {
     let mut buffer = vec![0u8; 64 * 1024];
-    while !stop.load(AtomicOrdering::SeqCst) {
+    while !stop.load(Ordering::SeqCst) {
         match pipe.read(&mut buffer) {
             Ok(0) | Err(_) => return,
             Ok(read) => {
@@ -566,25 +566,6 @@ pub fn exit_code(status: ExitStatus) -> i64 {
     i64::from(status.code().unwrap_or(1) as u32)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::quote_argument;
-
-    #[test]
-    fn quotes_arguments_like_libuv() {
-        assert_eq!(quote_argument(""), "\"\"");
-        assert_eq!(quote_argument("plain"), "plain");
-        assert_eq!(quote_argument("a b"), "\"a b\"");
-        assert_eq!(quote_argument("*.txt"), "*.txt");
-        assert_eq!(quote_argument("say \"hi\""), "\"say \\\"hi\\\"\"");
-        assert_eq!(
-            quote_argument("C:\\dir with space\\"),
-            "\"C:\\dir with space\\\\\""
-        );
-        assert_eq!(quote_argument("a\\\\b c"), "\"a\\\\b c\"");
-    }
-}
-
 /// Windows listings keep the file system's order; nothing sorts by raw names.
 pub fn raw_name(_name: &OsStr) -> Option<Vec<u8>> {
     None
@@ -608,4 +589,23 @@ pub fn drive_cwds() -> Map<String, Value> {
                 })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::quote_argument;
+
+    #[test]
+    fn quotes_arguments_like_libuv() {
+        assert_eq!(quote_argument(""), "\"\"");
+        assert_eq!(quote_argument("plain"), "plain");
+        assert_eq!(quote_argument("a b"), "\"a b\"");
+        assert_eq!(quote_argument("*.txt"), "*.txt");
+        assert_eq!(quote_argument("say \"hi\""), "\"say \\\"hi\\\"\"");
+        assert_eq!(
+            quote_argument("C:\\dir with space\\"),
+            "\"C:\\dir with space\\\\\""
+        );
+        assert_eq!(quote_argument("a\\\\b c"), "\"a\\\\b c\"");
+    }
 }

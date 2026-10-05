@@ -221,6 +221,8 @@ struct Scan {
 struct Installed {
     dev: u64,
     ino: u64,
+    /// The watched path with links resolved, as FSEvents spells event paths (`/private/var` for `/var`).
+    canonical: Option<String>,
 }
 
 struct FileWatcher<'a> {
@@ -530,7 +532,18 @@ impl FileWatcher<'_> {
             };
             match self.native.as_mut().unwrap().watch(Path::new(&path), mode) {
                 Ok(()) => {
-                    self.installed.insert(path, Installed { dev, ino });
+                    let canonical = fs::canonicalize(&path)
+                        .ok()
+                        .map(|canonical| canonical.to_string_lossy().into_owned())
+                        .filter(|canonical| *canonical != path);
+                    self.installed.insert(
+                        path,
+                        Installed {
+                            dev,
+                            ino,
+                            canonical,
+                        },
+                    );
                     added = true;
                 }
                 Err(error) => {
@@ -586,6 +599,23 @@ impl FileWatcher<'_> {
         false
     }
 
+    /// An event path in the spelling of the watched path it is under.
+    fn watched_spelling(&self, path: &str) -> String {
+        let mut best: Option<(&str, &str)> = None;
+        for (watched, installed) in &self.installed {
+            if let Some(canonical) = &installed.canonical
+                && is_within(path, canonical)
+                && best.is_none_or(|(_, longest)| canonical.len() > longest.len())
+            {
+                best = Some((watched, canonical));
+            }
+        }
+        match best {
+            Some((watched, canonical)) => format!("{watched}{}", &path[canonical.len()..]),
+            None => path.to_string(),
+        }
+    }
+
     /// Note a native event; returns whether it calls for a rescan.
     fn on_event(&mut self, event: notify::Result<Event>) -> bool {
         let event = match event {
@@ -607,7 +637,7 @@ impl FileWatcher<'_> {
         }
         let mut flush = false;
         for path in &event.paths {
-            let path = path.to_string_lossy();
+            let path = self.watched_spelling(&path.to_string_lossy());
             // Events about unrelated siblings of an ancestor, or about excluded entries, are ignored.
             if self.in_scope(&path) {
                 let reported = self.reported(&path);

@@ -1,18 +1,11 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { registerEnvConformance } from "@earendil-works/pi-durable/testing";
 import { afterAll, describe, expect, it } from "vitest";
 import { Connection } from "../src/connection.ts";
 import { RemoteExecutionEnv } from "../src/remote-env.ts";
-
-/** The daemon built by `cargo build` in ../daemon; tests talk to it over a pipe instead of SSH. */
-const daemon = resolve(
-	import.meta.dirname,
-	`../daemon/target/debug/pi-env${process.platform === "win32" ? ".exe" : ""}`,
-);
-if (!existsSync(daemon))
-	throw new Error(`Build the daemon first: npm run build:daemon in packages/env (missing ${daemon})`);
+import { daemon } from "./daemon.ts";
 
 const connection = new Connection({ command: [daemon] });
 afterAll(() => connection.close());

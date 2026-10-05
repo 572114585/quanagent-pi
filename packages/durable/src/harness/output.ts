@@ -1,4 +1,3 @@
-import { rangeDecoder } from "../env/decode.ts";
 import type { ShellOutputSkip } from "../env/index.ts";
 import { utf8ByteLength } from "../truncate.ts";
 
@@ -20,7 +19,7 @@ const NEWLINE = 0x0a;
 const INVALID_OUTPUT = /[\x00-\x08\x0b-\x1f\ufff9-\ufffb]/g;
 const encoder = new TextEncoder();
 /** Slices decode exactly: a U+FEFF at a slice's start is text, not a byte-order mark. */
-const decoder = rangeDecoder();
+const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
 /** Remove control characters that break display and transcripts; tabs and newlines stay. */
 export function sanitizeOutput(text: string): string {
@@ -117,7 +116,7 @@ export class OutputBuffer {
 	 * the next byte chunk then starts a new character. As in `StreamDecoder`, only a byte-order mark at the very start of
 	 * the output is dropped, never a U+FEFF later in it.
 	 */
-	readonly #decoder = rangeDecoder();
+	readonly #decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 	#started = false;
 	/** Stored chunks: for head the start of the stream, for tail a suffix that still contains the next window. */
 	#chunks: { readonly text: string; readonly bytes: number; readonly newlines: number }[] = [];
