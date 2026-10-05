@@ -413,11 +413,12 @@ export async function deployDaemon(
 				"$d = Split-Path -Parent $f",
 				"New-Item -ItemType Directory -Force -Path $d | Out-Null",
 				"$t = Join-Path $d ('.pi-env-' + [guid]::NewGuid().ToString() + '.tmp')",
-				// Exactly the binary's length: Windows' sshd may never pass on the end of stdin.
-				"$in = [Console]::OpenStandardInput(); $out = [IO.File]::Open($t, 'CreateNew', 'Write', 'None')",
-				`$need = ${bytes.length}; $buffer = New-Object byte[] 65536`,
-				"while ($need -gt 0) { $n = $in.Read($buffer, 0, [Math]::Min($buffer.Length, $need)); if ($n -le 0) { $out.Close(); Remove-Item -LiteralPath $t; throw 'pi-env upload ended early' }; $out.Write($buffer, 0, $n); $need -= $n }",
-				"$out.Close()",
+				// PowerShell reads redirected stdin itself, as text lines for `$input`, so the binary comes as base64 lines
+				// up to an end marker: Windows' sshd may never pass on the end of stdin.
+				"$text = New-Object System.Text.StringBuilder",
+				"foreach ($line in $input) { if ($line -eq 'PI-ENV-END') { break }; [void]$text.Append($line) }",
+				"$bytes = [Convert]::FromBase64String($text.ToString())",
+				"$out = [IO.File]::Open($t, 'CreateNew', 'Write', 'None'); $out.Write($bytes, 0, $bytes.Length); $out.Close()",
 				`if ((Get-FileHash -Algorithm SHA256 -LiteralPath $t).Hash.ToLower() -ne '${sha256}') { Remove-Item -LiteralPath $t; throw 'pi-env upload is corrupt' }`,
 				// A running daemon or a virus scanner can hold the old file for a moment.
 				"for ($i = 0; ; $i++) { try { Move-Item -Force -LiteralPath $t -Destination $f; break } catch { if ($i -ge 20) { throw }; Start-Sleep -Milliseconds 250 } }",
@@ -426,7 +427,8 @@ export async function deployDaemon(
 				"'deployed'",
 			].join("; "),
 		);
-		await runSsh(target, upload, { stdin: bytes, timeoutMs: UPLOAD_TIMEOUT_MS });
+		const lines = bytes.toString("base64").replace(/.{1,76}/g, "$&\n");
+		await runSsh(target, upload, { stdin: Buffer.from(`${lines}PI-ENV-END\n`), timeoutMs: UPLOAD_TIMEOUT_MS });
 		return file;
 	}
 	const upload = [
