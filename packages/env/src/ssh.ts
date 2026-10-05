@@ -307,15 +307,14 @@ function termuxWarnings(probe: Probe): string[] {
 
 /** Which system the target runs: `uname` through the login shell, or PowerShell on Windows. */
 export async function detectPlatform(target: SshTarget): Promise<RemotePlatform> {
-	let output: string;
+	let probe: Probe;
 	try {
-		output = await runSsh(target, POSIX_PROBE);
+		probe = parseProbe(target, await runSsh(target, POSIX_PROBE));
 	} catch (error) {
-		// cmd.exe or PowerShell as the remote shell: no `sh`.
-		if (!(error instanceof SshError)) throw error;
-		output = await runSsh(target, WINDOWS_PROBE);
+		// cmd.exe or PowerShell as the remote shell: no `sh`, or one that gets the probe's quotes wrong.
+		if (error instanceof HostKeyUnknownError || error instanceof HostKeyChangedError) throw error;
+		probe = parseProbe(target, await runSsh(target, WINDOWS_PROBE));
 	}
-	let probe = parseProbe(target, output);
 	// Git Bash as Windows' default SSH shell: ask PowerShell for Windows' own architecture and home spelling.
 	if (/^(MINGW|MSYS|CYGWIN)/.test(probe.system)) probe = parseProbe(target, await runSsh(target, WINDOWS_PROBE));
 	const arch = normalizeArch(probe.machine);
