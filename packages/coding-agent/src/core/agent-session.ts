@@ -1576,6 +1576,7 @@ export class AgentSession {
 				registered: [...this._toolRegistry.values()],
 				getExposure: (name) => this._getToolExposure(name),
 				getNamespace: (name) => this._toolDefinitions.get(name)?.definition.namespace,
+				getPromptGuidelines: (name) => this._toolPromptGuidelines.get(name) ?? [],
 			};
 			const descriptions = new Map<string, string>();
 			for (const { definition, sourceInfo } of hooks) {
@@ -1687,8 +1688,8 @@ export class AgentSession {
 		const toolSnippets: Record<string, string> = {};
 		for (const name of this._toolRegistry.keys()) {
 			const snippet = this._toolPromptSnippets.get(name);
-			// Tools without a snippet are not listed. Hidden tools are only callable through another tool.
-			if (snippet && !this._hiddenDeclarations.has(name)) toolSnippets[name] = snippet;
+			// Tools without a snippet are not listed.
+			if (snippet) toolSnippets[name] = snippet;
 		}
 
 		const loaderSystemPrompt = this._resourceLoader.getSystemPrompt();
@@ -1704,6 +1705,7 @@ export class AgentSession {
 			customPrompt: loaderSystemPrompt,
 			appendSystemPrompt,
 			selectedTools: validToolNames,
+			hiddenTools: [...this._hiddenDeclarations],
 			toolSnippets,
 			toolGuidelines: Object.fromEntries(this._toolPromptGuidelines),
 		});
@@ -1724,10 +1726,8 @@ export class AgentSession {
 		messages: AgentMessage[] = this.agent.state.messages,
 	): SystemMessage | undefined {
 		options.selectedTools = this._applyToolLoadout(options.selectedTools).map((tool) => tool.name);
-		// The tool list must match the declarations the request carries, so hidden tools are not listed.
-		options.toolSnippets = Object.fromEntries(
-			Object.entries(options.toolSnippets).filter(([name]) => !this._hiddenDeclarations.has(name)),
-		);
+		// The tool list and rules must match the declarations the request carries.
+		options.hiddenTools = [...this._hiddenDeclarations];
 		const sections = diffSystemPromptSections(
 			getCurrentSystemMessage(messages)?.sections ?? {},
 			buildSystemPromptSections(options),
