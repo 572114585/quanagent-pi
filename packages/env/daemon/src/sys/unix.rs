@@ -312,3 +312,7 @@ pub fn raw_name(name: &OsStr) -> Option<Vec<u8>> {
 pub fn drive_cwds() -> Map<String, Value> {
     Map::new()
 }
+
+pub fn read_dir(path: &str) -> io::Result<std::fs::ReadDir> {
+    std::fs::read_dir(path)
+}

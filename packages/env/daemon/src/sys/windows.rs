@@ -591,6 +591,17 @@ pub fn drive_cwds() -> Map<String, Value> {
         .collect()
 }
 
+/// libuv's `scandir` and `opendir` report a file as `ENOTDIR` (elsewhere `ERROR_DIRECTORY` is `ENOENT`).
+pub fn read_dir(path: &str) -> io::Result<std::fs::ReadDir> {
+    std::fs::read_dir(path).map_err(|error| {
+        if error.raw_os_error() == Some(267) {
+            synthetic("ENOTDIR")
+        } else {
+            error
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::quote_argument;

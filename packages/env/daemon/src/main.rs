@@ -228,8 +228,8 @@ impl Server {
             }
             "opendir" => {
                 let path = field(json, "path")?;
-                let entries = std::fs::read_dir(path)
-                    .map_err(|error| Failure::io(&error, "opendir", path))?;
+                let entries =
+                    sys::read_dir(path).map_err(|error| Failure::io(&error, "opendir", path))?;
                 let handle = self.insert(Handle::Dir(Arc::new(Mutex::new(DirHandle {
                     entries,
                     path: path.to_string(),

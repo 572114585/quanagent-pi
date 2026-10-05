@@ -52,7 +52,8 @@ jobs:
         run: |
           ndk="$ANDROID_HOME/ndk/$NDK_VERSION"
           if [ ! -d "$ndk" ]; then
-            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+            # `yes` ends with SIGPIPE once the licenses are accepted.
+            { yes || true; } | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
           fi
           linker="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.android }}-clang"
           test -x "$linker"

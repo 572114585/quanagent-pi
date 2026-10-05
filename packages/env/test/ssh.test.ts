@@ -170,9 +170,10 @@ describe.skipIf(sshd === undefined)("SSH bootstrap", () => {
 		const file = join(home, ".pi/mobile/tools", deployedName);
 		try {
 			const { pid } = await connection.info();
-			writeFileSync(file, "tampered");
 			process.kill(pid, "SIGKILL");
 			await new Promise((done) => setTimeout(done, 300));
+			// Linux refuses to write a running program's file.
+			writeFileSync(file, "tampered");
 			// The next start redeploys the verified binary instead of running whatever is there.
 			expect((await connection.info()).pid).not.toBe(pid);
 			expect(readFileSync(file).equals(readFileSync(daemon))).toBe(true);
