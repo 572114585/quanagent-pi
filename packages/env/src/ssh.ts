@@ -413,7 +413,11 @@ export async function deployDaemon(
 				"$d = Split-Path -Parent $f",
 				"New-Item -ItemType Directory -Force -Path $d | Out-Null",
 				"$t = Join-Path $d ('.pi-env-' + [guid]::NewGuid().ToString() + '.tmp')",
-				"$in = [Console]::OpenStandardInput(); $out = [IO.File]::Open($t, 'CreateNew', 'Write', 'None'); $in.CopyTo($out); $out.Close()",
+				// Exactly the binary's length: Windows' sshd may never pass on the end of stdin.
+				"$in = [Console]::OpenStandardInput(); $out = [IO.File]::Open($t, 'CreateNew', 'Write', 'None')",
+				`$need = ${bytes.length}; $buffer = New-Object byte[] 65536`,
+				"while ($need -gt 0) { $n = $in.Read($buffer, 0, [Math]::Min($buffer.Length, $need)); if ($n -le 0) { $out.Close(); Remove-Item -LiteralPath $t; throw 'pi-env upload ended early' }; $out.Write($buffer, 0, $n); $need -= $n }",
+				"$out.Close()",
 				`if ((Get-FileHash -Algorithm SHA256 -LiteralPath $t).Hash.ToLower() -ne '${sha256}') { Remove-Item -LiteralPath $t; throw 'pi-env upload is corrupt' }`,
 				// A running daemon or a virus scanner can hold the old file for a moment.
 				"for ($i = 0; ; $i++) { try { Move-Item -Force -LiteralPath $t -Destination $f; break } catch { if ($i -ge 20) { throw }; Start-Sleep -Milliseconds 250 } }",
