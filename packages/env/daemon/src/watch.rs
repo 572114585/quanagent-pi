@@ -119,9 +119,9 @@ fn denied(error: &io::Error) -> bool {
     error.kind() == io::ErrorKind::PermissionDenied
 }
 
-fn entry_of(metadata: &Metadata, hash: Option<u64>) -> Entry {
+fn kind_of(metadata: &Metadata) -> Kind {
     let file_type = metadata.file_type();
-    let kind = if file_type.is_file() {
+    if file_type.is_file() {
         Kind::File
     } else if file_type.is_dir() {
         Kind::Directory
@@ -129,8 +129,13 @@ fn entry_of(metadata: &Metadata, hash: Option<u64>) -> Entry {
         Kind::Symlink
     } else {
         Kind::Other
-    };
-    let (dev, ino) = sys::identity(metadata);
+    }
+}
+
+/// What a snapshot remembers of `path`, whose `metadata` came from `stat` (`follow`) or `lstat`.
+fn entry_of(path: &str, metadata: &Metadata, follow: bool, hash: Option<u64>) -> Entry {
+    let kind = kind_of(metadata);
+    let (dev, ino) = sys::path_identity(path, metadata, follow);
     let directory = kind == Kind::Directory;
     Entry {
         kind,
@@ -250,7 +255,7 @@ impl FileWatcher<'_> {
         self.control.aborted.load(Ordering::SeqCst)
     }
 
-    fn record(&self, scan: &mut Scan, path: &str, metadata: &Metadata) {
+    fn record(&self, scan: &mut Scan, path: &str, metadata: &Metadata, follow: bool) {
         let mut hash = None;
         let recent = metadata
             .modified()
@@ -272,7 +277,7 @@ impl FileWatcher<'_> {
             });
         }
         scan.snapshot
-            .insert(path.to_string(), entry_of(metadata, hash));
+            .insert(path.to_string(), entry_of(path, metadata, follow, hash));
     }
 
     fn count(&self, scan: &mut Scan, path: &str) -> Result<(), ScanError> {
@@ -329,11 +334,11 @@ impl FileWatcher<'_> {
                     let Ok(metadata) = fs::symlink_metadata(&path) else {
                         continue;
                     };
-                    let kind = entry_of(&metadata, None).kind;
+                    let kind = kind_of(&metadata);
                     scan.listed.insert(path.clone(), kind);
                     // A target's own entry (following links) wins over its listing by another target.
                     if !scan.snapshot.contains_key(&path) {
-                        self.record(scan, &path, &metadata);
+                        self.record(scan, &path, &metadata, false);
                     }
                     kind
                 }
@@ -364,7 +369,7 @@ impl FileWatcher<'_> {
                     let entry = Entry {
                         size: 0,
                         mtime: (0, 0),
-                        ..entry_of(&metadata, None)
+                        ..entry_of(&ancestor, &metadata, false, None)
                     };
                     scan.snapshot.insert(ancestor, entry);
                 }
@@ -378,7 +383,7 @@ impl FileWatcher<'_> {
                 }
                 Err(_) => continue,
             };
-            self.record(&mut scan, &target.path, &metadata);
+            self.record(&mut scan, &target.path, &metadata, true);
             if metadata.is_file()
                 && fs::symlink_metadata(&target.path)
                     .is_ok_and(|link| link.file_type().is_symlink())

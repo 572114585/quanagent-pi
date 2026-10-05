@@ -17,11 +17,12 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::UNIX_EPOCH;
-use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::{
-    CREATE_ALWAYS, CreateFileW, FILE_APPEND_DATA, FILE_ATTRIBUTE_NORMAL,
-    FILE_FLAG_BACKUP_SEMANTICS, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_DELETE,
-    FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_WRITE_DATA, MOVEFILE_REPLACE_EXISTING, MoveFileExW,
+    BY_HANDLE_FILE_INFORMATION, CREATE_ALWAYS, CreateFileW, FILE_APPEND_DATA,
+    FILE_ATTRIBUTE_NORMAL, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+    FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    FILE_WRITE_DATA, GetFileInformationByHandle, MOVEFILE_REPLACE_EXISTING, MoveFileExW,
     OPEN_ALWAYS, OPEN_EXISTING,
 };
 use windows_sys::Win32::System::IO::CancelSynchronousIo;
@@ -600,6 +601,48 @@ pub fn read_dir(path: &str) -> io::Result<std::fs::ReadDir> {
             error
         }
     })
+}
+
+/// Volume serial number and file index of `path`, as libuv's `stat` reports `dev` and `ino`: the creation time is not
+/// enough, because NTFS gives a file created under a recently removed name the old one's creation time ("tunneling").
+/// Opens a handle, like libuv; falls back to the metadata when the path cannot be opened.
+pub fn path_identity(path: &str, metadata: &Metadata, follow: bool) -> (u64, u64) {
+    let Ok(name) = wide(path) else {
+        return identity(metadata);
+    };
+    let flags = FILE_FLAG_BACKUP_SEMANTICS
+        | if follow {
+            0
+        } else {
+            FILE_FLAG_OPEN_REPARSE_POINT
+        };
+    // SAFETY: a NUL-terminated wide path; the handle is closed below.
+    let handle = unsafe {
+        CreateFileW(
+            name.as_ptr(),
+            0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            std::ptr::null(),
+            OPEN_EXISTING,
+            flags,
+            std::ptr::null_mut(),
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE {
+        return identity(metadata);
+    }
+    // SAFETY: a valid handle and a zeroed buffer for the call to fill.
+    let mut information: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    let found = unsafe { GetFileInformationByHandle(handle, &mut information) } != 0;
+    // SAFETY: the handle opened above.
+    unsafe { CloseHandle(handle) };
+    if !found {
+        return identity(metadata);
+    }
+    (
+        u64::from(information.dwVolumeSerialNumber),
+        (u64::from(information.nFileIndexHigh) << 32) | u64::from(information.nFileIndexLow),
+    )
 }
 
 #[cfg(test)]

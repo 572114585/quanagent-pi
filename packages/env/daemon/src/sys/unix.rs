@@ -316,3 +316,8 @@ pub fn drive_cwds() -> Map<String, Value> {
 pub fn read_dir(path: &str) -> io::Result<std::fs::ReadDir> {
     std::fs::read_dir(path)
 }
+
+/// Device and inode of `path`; the metadata already has them.
+pub fn path_identity(_path: &str, metadata: &Metadata, _follow: bool) -> (u64, u64) {
+    identity(metadata)
+}
