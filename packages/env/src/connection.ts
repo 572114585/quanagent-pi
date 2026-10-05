@@ -13,6 +13,8 @@ const MAX_FRAME = 16 * 1024 * 1024;
 const PING_INTERVAL_MS = 5000;
 /** The daemon pings every five seconds; this much silence means the connection is gone. */
 const SILENCE_LIMIT_MS = 30_000;
+/** How long starting the daemon and its `hello` may take. */
+const START_TIMEOUT_MS = 60_000;
 
 export type Json = Record<string, unknown>;
 
@@ -262,7 +264,12 @@ export class Connection {
 		const child = spawn(program, [...args, "serve", "--token", token], { stdio: ["pipe", "pipe", "pipe"] });
 		const session = new Session(++this.#sessions, child, token);
 		this.#session = session;
+		let startTimer: ReturnType<typeof setTimeout> | undefined;
 		const failed = new Promise<never>((_resolve, reject) => {
+			startTimer = setTimeout(
+				() => reject(lost(`pi-env did not answer within ${START_TIMEOUT_MS / 1000} s`)),
+				START_TIMEOUT_MS,
+			);
 			child.once("error", (error) =>
 				reject(new RemoteError({ code: "spawn_error", message: error.message, lost: true })),
 			);
@@ -288,6 +295,8 @@ export class Connection {
 		} catch (error) {
 			this.#teardown(session, error instanceof Error ? error : lost(String(error)));
 			throw error;
+		} finally {
+			clearTimeout(startTimer);
 		}
 	}
 

@@ -119,22 +119,42 @@ export function sshArguments(
 	];
 }
 
+/** How long a detection, check or upload over `ssh` may take before it is abandoned. */
+const SSH_TIMEOUT_MS = 60_000;
+const UPLOAD_TIMEOUT_MS = 300_000;
+
 /** Run one remote command over `ssh`, optionally feeding stdin; resolves with stdout, rejects on failure. */
 function runSsh(
 	target: SshTarget,
 	command: string,
-	options: { stdin?: Uint8Array; args?: string[] } = {},
+	options: { stdin?: Uint8Array; args?: string[]; timeoutMs?: number } = {},
 ): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const args = options.args ?? sshArguments(target);
 		const child = spawn(target.ssh ?? "ssh", [...args, command], { stdio: ["pipe", "pipe", "pipe"] });
+		const timeoutMs = options.timeoutMs ?? SSH_TIMEOUT_MS;
+		const timer = setTimeout(() => {
+			child.kill();
+			const diagnostics = Buffer.concat(stderr).toString("utf8");
+			reject(
+				new SshError(
+					`ssh ${target.host} did not finish within ${timeoutMs / 1000} s: ${diagnostics.trim()}`,
+					null,
+					diagnostics,
+				),
+			);
+		}, timeoutMs);
 		const stdout: Buffer[] = [];
 		const stderr: Buffer[] = [];
 		child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
 		child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
 		child.stdin.on("error", () => {});
-		child.on("error", (error) => reject(new SshError(error.message, null, "")));
+		child.on("error", (error) => {
+			clearTimeout(timer);
+			reject(new SshError(error.message, null, ""));
+		});
 		child.on("close", (code) => {
+			clearTimeout(timer);
 			const output = Buffer.concat(stdout).toString("utf8");
 			const diagnostics = Buffer.concat(stderr).toString("utf8");
 			if (code === 0) return resolve(output);
@@ -402,7 +422,7 @@ export async function deployDaemon(
 				"'deployed'",
 			].join("; "),
 		);
-		await runSsh(target, upload, { stdin: bytes });
+		await runSsh(target, upload, { stdin: bytes, timeoutMs: UPLOAD_TIMEOUT_MS });
 		return file;
 	}
 	const upload = [
@@ -421,7 +441,7 @@ export async function deployDaemon(
 		'for old in "$d"/pi-env-*; do [ "$old" = "$f" ] || rm -f "$old"; done',
 		"echo deployed",
 	].join("\n");
-	await runSsh(target, `sh -c ${quotePosix(upload)}`, { stdin: bytes });
+	await runSsh(target, `sh -c ${quotePosix(upload)}`, { stdin: bytes, timeoutMs: UPLOAD_TIMEOUT_MS });
 	return file;
 }
 

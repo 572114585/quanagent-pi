@@ -7,7 +7,15 @@ import { registerEnvConformance } from "@earendil-works/pi-durable/testing";
 import { afterAll, describe, expect, it } from "vitest";
 import type { Connection } from "../src/connection.ts";
 import { RemoteExecutionEnv } from "../src/remote-env.ts";
-import { acceptHostKey, connectSsh, type RemotePlatform, type SshTarget, scanHostKey } from "../src/ssh.ts";
+import {
+	acceptHostKey,
+	connectSsh,
+	deployDaemon,
+	detectPlatform,
+	type RemotePlatform,
+	type SshTarget,
+	scanHostKey,
+} from "../src/ssh.ts";
 import { daemon } from "./daemon.ts";
 
 /**
@@ -23,13 +31,24 @@ async function connect(): Promise<{ connection: Connection; remote: RemotePlatfo
 		const target: SshTarget = {
 			host: host!,
 			...(process.env.PI_ENV_SSH_USER === undefined ? {} : { user: process.env.PI_ENV_SSH_USER }),
+			...(process.env.PI_ENV_SSH_PORT === undefined ? {} : { port: Number(process.env.PI_ENV_SSH_PORT) }),
 			...(process.env.PI_ENV_SSH_KEY === undefined ? {} : { identityFile: process.env.PI_ENV_SSH_KEY }),
 			...(process.env.PI_ENV_SSH_PROGRAM === undefined ? {} : { ssh: process.env.PI_ENV_SSH_PROGRAM }),
 			knownHostsFile: join(root, "known_hosts"),
 			hostKeyAlias: "pi-env-external",
 		};
+		// Each stage is logged, so a hang in CI shows where it is.
+		const log = (text: string) => process.stderr.write(`[ssh-external ${new Date().toISOString()}] ${text}\n`);
+		log("scanning the host key");
 		await acceptHostKey(target, (await scanHostKey(target)).lines);
-		return connectSsh({ ...target, binary: daemon });
+		log("detecting the platform");
+		const remote = await detectPlatform(target);
+		log(`detected ${JSON.stringify(remote)}; deploying`);
+		log(`deployed ${await deployDaemon(target, remote, daemon)}; connecting`);
+		const result = await connectSsh({ ...target, binary: daemon, onLog: (text) => log(`daemon: ${text.trim()}`) });
+		log("connected; saying hello");
+		log(`hello ${JSON.stringify(await result.connection.info())}`);
+		return result;
 	})();
 	return connected;
 }
