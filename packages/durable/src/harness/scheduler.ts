@@ -1174,14 +1174,14 @@ export class TaskScheduler {
 					return token === undefined || entry?.kind === token.kind ? entry : undefined;
 				});
 			}) as ErasedRuntime["entry"],
-			context: (conversationId, context, at) =>
+			context: (conversationId, context, options) =>
 				this.#read(invocation, async () => {
 					const { view, range } = await readContextFrom(
 						this.#session,
 						this.#storage,
 						conversationId,
 						context,
-						at,
+						options?.at,
 						invocation.contextRange,
 					);
 					if (!invocation.ended) invocation.contextRange = range;

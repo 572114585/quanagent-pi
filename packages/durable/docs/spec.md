@@ -1698,7 +1698,7 @@ interface TaskRuntime<I, S, R, H extends object> extends DocumentObserver, Docum
   entry(id: EntryId, context: Context): Promise<EntryRecord | undefined>;
   entry<D extends JsonValue>(token: Entry<D>, id: EntryId, context: Context): Promise<TypedEntry<D> | undefined>;
   /** Committed raw active transcript and model context, optionally cut off at `at`. */
-  context(conversationId: ConversationId, context: Context, at?: EntryId): Promise<ContextView>;
+  context(conversationId: ConversationId, context: Context, options?: { readonly at?: EntryId }): Promise<ContextView>;
   /** The Harness clock. */
   now(): number;
   /** Forward a non-fatal failure to `HarnessOptions.onReport`. */

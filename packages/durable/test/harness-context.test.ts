@@ -210,7 +210,7 @@ describe("conversation context", () => {
 						}, taskContext);
 					const read = async (at?: EntryId): Promise<{ view: ContextView; rows: number }> => {
 						const before = scanned;
-						const view = await runtime.context(root.id, taskContext, at);
+						const view = await runtime.context(root.id, taskContext, { at });
 						return { view, rows: scanned - before };
 					};
 					const initial = await read();
