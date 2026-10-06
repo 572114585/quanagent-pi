@@ -531,7 +531,11 @@ export interface Conversation {
 
 	/** Session commit whose `tx.createTask()` defaults to this conversation. */
 	commit<T>(change: (tx: Tx) => T | Promise<T>, context: Context): Promise<T>;
-	context(context: Context): Promise<ContextView>;
+	/**
+	 * Committed raw active transcript and model context. With `at`, the context as of that visible entry: the same view
+	 * `fork(at)` would start with, without creating a conversation.
+	 */
+	context(context: Context, options?: { readonly at?: EntryId }): Promise<ContextView>;
 	/** Newest-first fork-aware history of this conversation. */
 	entries(
 		query: Omit<EntryQuery, "conversationId">,

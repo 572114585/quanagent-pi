@@ -142,6 +142,38 @@ describe("conversation context", () => {
 		expect(parentView.entries.map((entry) => entry.kind)).toEqual(["reset", "message"]);
 	});
 
+	// #10512
+	it("reads the context as of an earlier entry, as a fork at that entry starts", async () => {
+		const { root, append, message } = await setup();
+		const first = await message(user("first"));
+		const call = await message(assistant("calling", { calls: ["x", "y"] }));
+		const result = await message(toolResult("x"));
+		await message(toolResult("y"));
+		const edit = await append({
+			kind: "edit",
+			edits: [{ target: first.id, action: "replace", messages: [user("first v2")] }],
+		});
+		const reset = await append({ kind: "reset", head: "self", model: [user("fresh start")] });
+		const tail = await message(assistant("after reset"));
+
+		for (const at of [first, call, result, edit, reset, tail]) {
+			const fork = await root.fork(at.id, { ownership: { kind: "ownerless" } }, context);
+			expect(await root.context(context, { at: at.id })).toEqual(await fork.context(context));
+		}
+		// Stepped back before the edit and the reset: neither applies, and a cut call gets synthesized results.
+		expect((await root.context(context, { at: call.id })).messages.map(describeMessage)).toEqual([
+			"user:first",
+			"assistant:calling",
+			"result:x:error",
+			"result:y:error",
+		]);
+		expect(await root.context(context, { at: tail.id })).toEqual(await root.context(context));
+		expect(await root.context(context, {})).toEqual(await root.context(context));
+
+		const other = await root.fork(first.id, { ownership: { kind: "ownerless" } }, context);
+		await expect(other.context(context, { at: tail.id })).rejects.toThrow("is not visible");
+	});
+
 	it("extends a task invocation's context read with only newer entries", async () => {
 		let scanned = 0;
 		const memory = new MemoryStorage();

@@ -539,7 +539,8 @@ interface Conversation {
     change: (tx: Tx) => T | Promise<T>,
     context: Context,
   ): Promise<T>;
-  context(context: Context): Promise<ContextView>;
+  /** With `at`, the context as of that visible entry, as `fork(at)` would start with. */
+  context(context: Context, options?: { readonly at?: EntryId }): Promise<ContextView>;
   entries(
     query: Omit<EntryQuery, "conversationId">,
     limit: number,
