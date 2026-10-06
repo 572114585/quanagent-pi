@@ -281,6 +281,13 @@ Context derivation:
    fork cut or at an interrupted tail. Drop tool results with no preceding call.
 9. Exclude model-less entries and assistant messages with `aborted`, `error`, or
    `deferred` stop reasons from future provider requests.
+10. Move a system message that only user messages precede to the front. A
+    run's input is committed before generation renders the system prompt, so a
+    transcript, or the range after a compaction or reset, otherwise starts with
+    the input. Providers treat only a leading system message as the initial
+    prompt and tool set; without one, a later tool change rewrites the
+    request's tool list and invalidates the whole prompt cache. Stored entries
+    and `contributions` keep the committed order.
 
 Views carry raw active entries. UI reduction and model-context reduction are
 separate consumers. Older stored history is available through the owning

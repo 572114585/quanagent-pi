@@ -127,7 +127,19 @@ function deriveView(head: ContextBounds["head"], range: readonly EntryRecord[]):
 			(message) => message.role !== "assistant" || !EXCLUDED_STOP_REASONS.has(message.stopReason),
 		);
 	});
-	return { head, entries, contributions, messages: orderToolResults(contributions.flat()) };
+	return { head, entries, contributions, messages: leadWithSystem(orderToolResults(contributions.flat())) };
+}
+
+/**
+ * Move a system message that only user messages precede to the front. A run's input is committed before generation
+ * renders the system prompt, so a transcript, or the range after a compaction or reset, starts with user messages
+ * followed by the baseline system message. Providers treat only a leading system message as the initial prompt and tool
+ * set; without it, a later tool change rewrites the request's tool list and invalidates the whole prompt cache.
+ */
+function leadWithSystem(messages: Message[]): Message[] {
+	const index = messages.findIndex((message) => message.role !== "user");
+	if (index <= 0 || messages[index]!.role !== "system") return messages;
+	return [messages[index]!, ...messages.slice(0, index), ...messages.slice(index + 1)];
 }
 
 /** The raw active entries within captured bounds, without deriving model context. */

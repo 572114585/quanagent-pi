@@ -20,6 +20,10 @@
 
 - Within one task invocation, `runtime.context()` reuses the range its previous read scanned and reads only entries committed since then, unless the head marker changed. A generation's request no longer rereads the whole transcript after its prepare, which roughly halves context reads per turn. The range is dropped when the invocation ends or sleeps.
 
+### Fixed
+
+- A conversation's first system message, and the baseline after a compaction or reset, now leads the model context instead of following the input that started the run. Providers with native mid-conversation tool changes, such as Anthropic, keep the prompt cache across later tool changes instead of rewriting it in full ([#10542](https://github.com/earendil-works/pi/issues/10542)).
+
 ## [1.0.4] - 2026-10-05
 
 ### Breaking Changes

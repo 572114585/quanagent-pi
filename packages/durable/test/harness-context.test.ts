@@ -114,6 +114,38 @@ describe("conversation context", () => {
 		]);
 	});
 
+	// #10542
+	it("leads with a system message that only user messages precede, and keeps later ones in place", async () => {
+		const { root, message, append } = await setup();
+		await message(user("first"));
+		await message(user("steered"));
+		await message(system({ preamble: "You help." }), "pi.system");
+		await message(assistant("answer"));
+		await message(user("next"));
+		await message(system({ cwd: "/repo" }), "pi.system");
+		let view = await root.context(context);
+		expect(view.messages.map(describeMessage)).toEqual([
+			"system:preamble",
+			"user:first",
+			"user:steered",
+			"assistant:answer",
+			"user:next",
+			"system:cwd",
+		]);
+		// Stored order and contributions stay as committed.
+		expect(view.contributions.flat().map(describeMessage).slice(0, 3)).toEqual([
+			"user:first",
+			"user:steered",
+			"system:preamble",
+		]);
+
+		// After a reset, the baseline written after the handoff leads too.
+		await append({ kind: "reset", head: "self", model: [user("handoff")] });
+		await message(system({ preamble: "Baseline." }), "pi.system");
+		view = await root.context(context);
+		expect(view.messages.map(describeMessage)).toEqual(["system:preamble", "user:handoff"]);
+	});
+
 	it("synthesizes missing tool results after a fork and drops results cut from their call", async () => {
 		const { root, message } = await setup();
 		await message(user("go"));
