@@ -412,6 +412,8 @@ type HarnessSettings = {
   readonly toolExecution?: ToolExecutionMode;
   readonly steeringMode?: QueueMode;
   readonly followUpMode?: QueueMode;
+  /** How long an idle conversation keeps its last context read in memory; busy ones always keep it. */
+  readonly contextRetentionMs?: number;
 };
 
 /** Resolved: every field over its built-in default, object fields merged. */
@@ -423,6 +425,7 @@ type Settings = {
   readonly toolExecution: ToolExecutionMode; // "parallel"
   readonly steeringMode: QueueMode; // "one-at-a-time"
   readonly followUpMode: QueueMode; // "one-at-a-time"
+  readonly contextRetentionMs: number; // 600000
 };
 
 /** Stored choices of one conversation; names, not objects. Unset fields follow the host. */
@@ -1806,8 +1809,15 @@ committed documents, for example to supply `PromptInput.read` (section 7.4).
 `getTask()` and `entry()` read committed records with one lookup each; `waitForTask()` waits for a terminal receipt,
 for example a child task created by a tool.
 `context()` captures its bounds on the Session line and derives the view from
-immutable entries off the line, like `Conversation.context()`. Like every runtime
-operation, these reject after the invocation ends.
+immutable entries off the line, like `Conversation.context()`. The scheduler keeps
+each conversation's last range and view in memory: a later read by any of its tasks
+with the same head marker scans and derives only the entries after that range's tail.
+A conversation keeps them while busy and for `contextRetentionMs` once idle.
+Expiry is checked on task changes and by one unreferenced timer, which never keeps
+the process alive; where timers cannot be unreferenced, as in Cloudflare Workers,
+only task changes check it. Kept entries are frozen and each read returns its own
+view arrays. Like every runtime operation, these
+reject after the invocation ends.
 
 Reservation durably changes `pending`, or `waiting` once it may resume, to
 `running`. One invocation runs phase

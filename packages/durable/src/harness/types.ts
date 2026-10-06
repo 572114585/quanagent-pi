@@ -421,6 +421,11 @@ export type HarnessSettings = {
 	readonly toolExecution?: ToolExecutionMode;
 	readonly steeringMode?: QueueMode;
 	readonly followUpMode?: QueueMode;
+	/**
+	 * How long an idle conversation keeps its last context read in memory, so its next run reads only newer entries.
+	 * Busy conversations always keep it; `0` drops it once the conversation is idle.
+	 */
+	readonly contextRetentionMs?: number;
 };
 
 /** Resolved settings: every field over its built-in default, object fields merged. */
@@ -434,6 +439,7 @@ export type Settings = {
 	readonly toolExecution: ToolExecutionMode;
 	readonly steeringMode: QueueMode;
 	readonly followUpMode: QueueMode;
+	readonly contextRetentionMs: number;
 };
 
 /** What `HarnessOptions.env` builds an environment for. */
