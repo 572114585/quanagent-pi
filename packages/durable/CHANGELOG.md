@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Within one task invocation, `runtime.context()` reuses the range its previous read scanned and reads only entries committed since then, unless the head marker changed. A generation's request no longer rereads the whole transcript after its prepare, which roughly halves context reads per turn. The range is dropped when the invocation ends or sleeps.
+
 ## [1.0.4] - 2026-10-05
 
 ### Breaking Changes
