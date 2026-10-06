@@ -426,13 +426,26 @@ export class TaskScheduler {
 		this.#kick();
 	}
 
+	/**
+	 * `settings.contextRetentionMs`, or 0 when the host's settings throw. Kept contexts are only a cache, so dropping them
+	 * is safe, while a throw here would escape commit listeners, reconciliation, and the expiry timer.
+	 */
+	#contextRetentionMs(): number {
+		try {
+			return this.#settings().contextRetentionMs;
+		} catch (error) {
+			this.#report(error);
+			return 0;
+		}
+	}
+
 	/** Resolve idle waiters, and drop each kept context whose conversation has been idle for the retention period. */
 	#settleIdle(): void {
 		for (const conversationId of this.#idleWaiters.keys()) {
 			if (this.#idle(conversationId)) this.#idleWaiters.resolve(conversationId);
 		}
 		const now = this.#now();
-		const retention = this.#settings().contextRetentionMs;
+		const retention = this.#contextRetentionMs();
 		for (const [conversationId, kept] of this.#contexts) {
 			if (kept.idleSince !== undefined && now - kept.idleSince >= retention) {
 				this.#contexts.delete(conversationId);
@@ -453,7 +466,7 @@ export class TaskScheduler {
 	 * Durable Object from being evicted, and eviction frees the contexts. There, task changes alone check expiry.
 	 */
 	#scheduleExpiry(): void {
-		const retention = this.#settings().contextRetentionMs;
+		const retention = this.#contextRetentionMs();
 		let at: number | undefined;
 		for (const kept of this.#contexts.values()) {
 			if (kept.idleSince !== undefined && (at === undefined || kept.idleSince + retention < at)) {
@@ -1247,7 +1260,7 @@ export class TaskScheduler {
 						// A read of another, idle conversation starts or continues its retention period.
 						if (!this.#idle(conversationId)) {
 							this.#contexts.set(conversationId, { range, idleSince: undefined });
-						} else if (this.#settings().contextRetentionMs > 0) {
+						} else if (this.#contextRetentionMs() > 0) {
 							this.#contexts.set(conversationId, { range, idleSince: kept?.idleSince ?? this.#now() });
 							this.#scheduleExpiry();
 						}
