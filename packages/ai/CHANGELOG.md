@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- A stream function must return an `AssistantMessageEventStream`, for example from `createAssistantMessageEventStream()`; a hand-written `EventStream<AssistantMessageEvent, AssistantMessage>` subclass no longer type-checks in its place
+
 ### Added
 
 - Added `durationMs` to `AssistantMessage`: `AssistantMessageEventStream` measures each response with a monotonic clock from the start of the request to its final message, for every API implementation, including direct calls. Deferred results fetched later stay untimed ([#10549](https://github.com/earendil-works/pi/issues/10549))
