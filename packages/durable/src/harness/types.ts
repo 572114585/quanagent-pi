@@ -171,6 +171,8 @@ export interface ToolExecutionApi<TDetails extends JsonValue = JsonValue> extend
 	readonly registry: RegistrySnapshot;
 	/** The calling conversation's agent, as the tool task's phase resolved it. */
 	agent(context: Context): Promise<Agent>;
+	/** `HarnessOptions.models`: the catalog, credentials, and request transforms generation uses. */
+	readonly models: Models;
 	/** Built by `HarnessOptions.env` for this call; `undefined` without an environment. */
 	readonly env: ExecutionEnv | undefined;
 	/**
@@ -605,6 +607,8 @@ export interface Harness extends Session {
 export interface HookApi extends DocumentReader {
 	readonly taskId: TaskId;
 	readonly conversationId: ConversationId;
+	/** `HarnessOptions.models`. */
+	readonly models: Models;
 	memo<T extends JsonValue>(name: string, context: Context): Promise<T | undefined>;
 	memo<T extends JsonValue>(name: string, candidate: T, context: Context): Promise<T>;
 }
