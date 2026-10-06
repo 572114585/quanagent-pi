@@ -352,6 +352,7 @@ type HarnessOptions<Tool extends ToolRegistration = ToolRegistration> = {
   ) => ExecutionEnv | undefined | Promise<ExecutionEnv | undefined>;
   /** Runs in every commit that creates or forks a conversation, after the built-in creation hook (below). */
   readonly conversationCreated?: (tx: Tx, conversation: ConversationRecord) => void | Promise<void>;
+  /** Wall clock for sleeps, retries, message timestamps, and task lifecycle times. Default `Date.now`. */
   readonly now?: () => number;
   readonly onReport?: (error: unknown) => void;
 };
@@ -1631,6 +1632,10 @@ type TaskRecord<I, S, R> = {
   readonly owner?: TaskId;
   readonly background: boolean;
   readonly abortRequested: boolean;
+  /** Wall clock at the first change to `running`; kept through waits and recovery. */
+  readonly startedAt?: number;
+  /** Wall clock at the change to `terminal`. */
+  readonly endedAt?: number;
 } & (
   | {
       readonly state: Extract<TaskState<S, R>, { status: "pending" | "running" | "waiting" }>;
@@ -1887,6 +1892,17 @@ items 1 and 3 and its waiters follow in the final commit.
 
 The execution checkpoint and memos disappear from the terminal representation.
 Terminal records remain queryable for waits, waiters, inspection, and reopen.
+
+The Session stamps lifecycle times on task records with the clock it was opened
+with (`HarnessOptions.now` for a Harness, `Date.now` by default): `startedAt` at
+the first change to `running`, `endedAt` at the change to `terminal`. Once set,
+each carries over from the replaced record, so `startedAt` survives waits, a
+`completing` hold, and reopen, and the span between them includes those. A task
+that never ran, such as one orphaned before its first reservation, has only
+`endedAt`; records written by earlier versions have neither, and a task live
+across the upgrade gets `startedAt` at its next run. `inspect()` shows
+them on each live task's record. They are lifecycle times, not execution time:
+a tool's execution time is its result's `durationMs` (section 7.3).
 There are no free-standing task dependencies: ordering comes from a task waiting
 on other tasks (section 5.5). An abort mark lets pending work reach its abort handler,
 or its `orphaned` settlement when its definition is unavailable.
@@ -3596,9 +3612,12 @@ because the terminal record keeps it; the call is read from the assistant entry.
   diagnostics, and ends `failed` with `{ entryId }`.
 - The result commit bounds the content, appends the diagnostics block (section
   7.3), appends one `pi.tool-result` entry with `model: [{ role: "toolResult",
-  toolCallId, toolName, content, details, isError, timestamp }]` and
+  toolCallId, toolName, content, details, isError, durationMs, timestamp }]` and
   `data: { diagnostics }`, marks the slot `done`, and
   completes with `{ entryId, control }`. An `isError` result still completes.
+  `durationMs` is how long `execute()` took in this attempt, measured with a
+  monotonic clock, including when it threw; results of calls that did not
+  execute, and `interrupted` or `aborted` results, have none.
 - A throw from `execute()`, or from `HarnessOptions.env` building its
   environment, becomes a `tool_error` result and the task ends
   `failed` with `{ entryId }`; once the invocation is signalled it propagates

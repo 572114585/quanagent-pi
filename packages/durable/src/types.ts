@@ -535,6 +535,14 @@ type TaskRecordBase<I, R> = {
 	readonly background: boolean;
 	/** Durable abort mark checked before run-mode progress is committed. */
 	readonly abortRequested: boolean;
+	/**
+	 * Wall-clock milliseconds of the first change to `running`, stamped by the Session. Kept through waits and recovery,
+	 * so the span to `endedAt` includes them. Absent before the task first runs, and on records written by earlier
+	 * versions.
+	 */
+	readonly startedAt?: number;
+	/** Wall-clock milliseconds of the change to `terminal`, stamped by the Session; absent while live. */
+	readonly endedAt?: number;
 };
 
 /** Complete replacement record for one durable task state machine. */
