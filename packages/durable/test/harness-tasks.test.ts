@@ -852,6 +852,19 @@ describe("task scheduling", () => {
 		await expect(root.waitForIdle(context)).rejects.toThrow("closed");
 	});
 
+	// #10546
+	it("pages the newest tasks first without scanning older ones", async () => {
+		const Idle = oneStep("test.idle", async () => {});
+		const { harness, root } = await openRoot([Idle]);
+		const ids: TaskId[] = [];
+		for (let index = 0; index < 5; index++) ids.push(await start(root, Idle));
+		const first = await harness.commit((tx) => tx.scanTasks({ order: "descending" }, 2), context);
+		expect(first.items.map(({ id }) => id)).toEqual([ids[4], ids[3]]);
+		const second = await harness.commit((tx) => tx.scanTasks({}, 2, first.next), context);
+		expect(second.items.map(({ id }) => id)).toEqual([ids[2], ids[1]]);
+		await harness.close(context);
+	});
+
 	it("rejects unknown tasks and reports terminal tasks", async () => {
 		const Done = oneStep("test.quick", async (_task, runtime, ctx) => {
 			await runtime.commit(() => completed(null), ctx);

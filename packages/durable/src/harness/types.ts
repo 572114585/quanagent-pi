@@ -536,7 +536,7 @@ export interface Conversation {
 	 * `fork(at)` would start with, without creating a conversation.
 	 */
 	context(context: Context, options?: { readonly at?: EntryId }): Promise<ContextView>;
-	/** Newest-first fork-aware history of this conversation. */
+	/** Fork-aware history of this conversation, newest first unless `query.order` is `ascending`. */
 	entries(
 		query: Omit<EntryQuery, "conversationId">,
 		limit: number,

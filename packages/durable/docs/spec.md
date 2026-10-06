@@ -4312,15 +4312,20 @@ type Page<T, C> = {
 
 type Cursor = Readonly<Record<string, JsonValue>>;
 
+/** ID order: `ascending` is oldest first, `descending` newest first. */
+type ScanOrder = "ascending" | "descending";
+
 type ConversationQuery = {
   readonly ownerConversationId?: ConversationId;
   readonly ownerTaskId?: TaskId;
+  readonly order?: ScanOrder; // default ascending
 };
 
 type EntryQuery = {
   readonly conversationId: ConversationId;
   readonly minEntryId?: EntryId; // inclusive
   readonly maxEntryId?: EntryId; // inclusive
+  readonly order?: ScanOrder; // default descending
 };
 
 type TaskQuery = {
@@ -4329,11 +4334,13 @@ type TaskQuery = {
   readonly status?: "pending" | "running" | "waiting" | "completing" | "terminal";
   readonly abortRequested?: boolean;
   readonly background?: boolean;
+  readonly order?: ScanOrder; // default ascending
 };
 
 type SubmissionQuery = {
   readonly conversationId?: ConversationId;
   readonly status?: SubmissionRecord["status"];
+  readonly order?: ScanOrder; // default ascending
 };
 
 type DocumentPoint = Seq | "current";
@@ -4433,15 +4440,22 @@ not create, change, or retire a selected source. Later source changes,
 reclamation, retirement, or backend reopen cannot affect the child.
 
 Cursors are backend-owned JSON objects. Callers only round-trip them to the same
-scan on the same storage; cross-storage or cross-query use is unsupported. The
+scan on the same storage; cross-storage or cross-query use is unsupported.
+Conversation, entry, task, and submission scans run in their query's `order`,
+by ID. A cursor carries the order of the scan that returned it: a scan given a
+cursor continues in that order whether its query repeats `order` or omits it,
+and rejects a query that asks for the other order. Storage implementations
+must honor `order`; one that ignored it would return pages in the wrong
+direction without an error. The
 Session owns the mutation line, so storage implementations do not add a second
 caller-facing commit mutex. Each backend still makes one admitted batch atomic.
 
 `findLatestHeadMarker()` returns the newest visible entry carrying `head` at or
 below its optional inclusive cutoff. The returned entry is the marker; its
 `head` value is the actual lower bound for context. `scanEntries()` pages the
-inclusive ID range in newest-first order while applying every conversation
-ancestry cap. With no bounds it pages complete visible history. To read context
+inclusive ID range, newest first by default, while applying every conversation
+ancestry cap; oldest first, it reads the root's segment first and then each
+fork's. With no bounds it pages complete visible history. To read context
 through entry `E`, find the marker at or before `E`, then scan from
 `marker?.head` through `E`. For current context the upper bound is omitted.
 Conversation owner filters are indexed and conjunctive. They support ownership

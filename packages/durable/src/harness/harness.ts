@@ -134,6 +134,7 @@ class ConversationImpl<Tool extends ToolRegistration> implements Conversation {
 			conversationId: this.id,
 			...(query.minEntryId === undefined ? {} : { minEntryId: query.minEntryId }),
 			...(query.maxEntryId === undefined ? {} : { maxEntryId: query.maxEntryId }),
+			...(query.order === undefined ? {} : { order: query.order }),
 		};
 		return this.#host.harness.readOnLine(() => this.#host.storage.scanEntries(bounded, limit, cursor, context));
 	}
