@@ -1,8 +1,8 @@
 import type { Context } from "@earendil-works/chord";
 import type { AssistantMessage, Message, ToolCall, ToolResultMessage } from "@earendil-works/pi-ai";
-import type { SessionImpl } from "../session/session.ts";
 import { idFromNumber } from "../ids.ts";
-import type { ContextEdit, ConversationId, Cursor, EntryId, EntryRecord, EntryQuery, Storage } from "../types.ts";
+import type { SessionImpl } from "../session/session.ts";
+import type { ContextEdit, ConversationId, Cursor, EntryId, EntryQuery, EntryRecord, Storage } from "../types.ts";
 import type { ContextView } from "./types.ts";
 
 const SCAN_PAGE_SIZE = 256;
