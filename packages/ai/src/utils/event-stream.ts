@@ -88,6 +88,9 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 	}
 }
 
+/** Start of each assistant stream, kept outside the class so it stays structurally a plain `EventStream`. */
+const streamStarts = new WeakMap<AssistantMessageEventStream, { readonly wall: number; readonly monotonic: number }>();
+
 /**
  * Event stream of one assistant response. It also times the response: the final message (`done` or `error` event, or
  * the result passed to `end()`) gets `durationMs`, measured with a monotonic clock from the stream's creation, unless
@@ -95,9 +98,6 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
  * elsewhere, such as a deferred result fetched later, therefore leaves it untimed.
  */
 export class AssistantMessageEventStream extends EventStream<AssistantMessageEvent, AssistantMessage> {
-	readonly #startedAt = Date.now();
-	readonly #startedAtMonotonic = performance.now();
-
 	constructor() {
 		super(
 			(event) => event.type === "done" || event.type === "error",
@@ -110,28 +110,25 @@ export class AssistantMessageEventStream extends EventStream<AssistantMessageEve
 				throw new Error("Unexpected event type for final result");
 			},
 		);
-	}
-
-	/** Wall-clock start of this stream, for messages created before the response could start. */
-	get startedAt(): number {
-		return this.#startedAt;
+		streamStarts.set(this, { wall: Date.now(), monotonic: performance.now() });
 	}
 
 	override push(event: AssistantMessageEvent): void {
-		if (event.type === "done") this.#time(event.message);
-		else if (event.type === "error") this.#time(event.error);
+		if (!this.done && event.type === "done") timeResponse(this, event.message);
+		else if (!this.done && event.type === "error") timeResponse(this, event.error);
 		super.push(event);
 	}
 
 	override end(result?: AssistantMessage): void {
-		if (result !== undefined) this.#time(result);
+		if (!this.done && result !== undefined) timeResponse(this, result);
 		super.end(result);
 	}
+}
 
-	#time(message: AssistantMessage): void {
-		if (this.done || message.durationMs !== undefined || message.timestamp < this.#startedAt) return;
-		message.durationMs = Math.max(0, Math.round(performance.now() - this.#startedAtMonotonic));
-	}
+function timeResponse(stream: AssistantMessageEventStream, message: AssistantMessage): void {
+	const start = streamStarts.get(stream);
+	if (start === undefined || message.durationMs !== undefined || message.timestamp < start.wall) return;
+	message.durationMs = Math.max(0, Math.round(performance.now() - start.monotonic));
 }
 
 /** Factory function for AssistantMessageEventStream (for use in extensions) */
