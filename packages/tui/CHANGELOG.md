@@ -10,6 +10,7 @@
 
 - Added `Box.setPaddingX(...)` and `Text.setPaddingX(...)` ([#10557](https://github.com/earendil-works/pi/pull/10557) by [@rwachtler](https://github.com/rwachtler))
 - Added `Terminal.setProgramStatus()` and `formatProgramStatus()` for the Program Status Protocol (OSC 7501). `ProcessTerminal` asks the terminal for support at startup and sends reports only if it answers; `PI_PROGRAM_STATUS=1|0` overrides detection ([#10607](https://github.com/earendil-works/pi/issues/10607))
+- Added `TuiAltScreen.resetTextSelection()`, which drops the text selection and multi-click state, for example before a host replaces the transcript ([#9311](https://github.com/earendil-works/pi/issues/9311), [#10567](https://github.com/earendil-works/pi/pull/10567) by [@christianklotz](https://github.com/christianklotz))
 
 ### Fixed
 
