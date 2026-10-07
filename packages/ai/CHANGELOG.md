@@ -24,6 +24,7 @@
 - Reduced context-limit request failures by estimating input at 3.5 characters per token instead of 4 when calculating output limits ([#10497](https://github.com/earendil-works/pi/issues/10497))
 - Fixed Radius models disabled by an organization owner still being listed: a fetched or cached Radius catalog now replaces the shipped default catalog instead of being merged into it
 - Fixed OpenAI provider type-checking with cached catalogs that contain no classifier models
+- Fixed Anthropic browser login failing with "localhost refused to connect" when port 53692 is reserved or in use, for example by Hyper-V/WSL port exclusions on Windows: login now falls back to a free loopback port ([#10571](https://github.com/earendil-works/pi/issues/10571))
 
 ## [1.0.4] - 2026-10-05
 
