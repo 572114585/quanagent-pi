@@ -290,7 +290,7 @@ export class Triage {
 			replay: "safe",
 			execute: async (args, api) => {
 				const hits = corpus.search(args.query, issueFor(api.conversationId));
-				return { content: [{ type: "text", text: hits.length ? hits.map(line).join("\n") : "No matches." }] };
+				return { output: [{ type: "text", text: hits.length ? hits.map(line).join("\n") : "No matches." }] };
 			},
 		});
 
@@ -301,9 +301,9 @@ export class Triage {
 			replay: "safe",
 			execute: async (args) => {
 				const issue = corpus.get(args.number);
-				if (!issue) return { content: [{ type: "text", text: `#${args.number} is not in the local corpus.` }] };
+				if (!issue) return { output: [{ type: "text", text: `#${args.number} is not in the local corpus.` }] };
 				const text = `#${issue.number} [${issueStatus(issue)}] ${issue.title}\nLabels: ${issue.labels.join(", ") || "none"}. Created ${issue.createdAt}.\n\n${issue.body.slice(0, 8000)}`;
-				return { content: [{ type: "text", text }] };
+				return { output: [{ type: "text", text }] };
 			},
 		});
 
@@ -329,7 +329,7 @@ export class Triage {
 			replay: "safe",
 			execute: async (args, api, callContext) => {
 				const number = issueFor(api.conversationId);
-				if (number < 0) return { content: [{ type: "text", text: "Unknown conversation." }], isError: true };
+				if (number < 0) return { output: [{ type: "text", text: "Unknown conversation." }], isError: true };
 				const result: TriageResult = {
 					...args,
 					duplicates: args.duplicates.filter((dup) => dup.number !== number).slice(0, 5),
@@ -344,7 +344,7 @@ export class Triage {
 						}),
 					callContext,
 				);
-				return { content: [{ type: "text", text: "Recorded." }], control: { terminate: true } };
+				return { output: [{ type: "text", text: "Recorded." }], control: { terminate: true } };
 			},
 		});
 

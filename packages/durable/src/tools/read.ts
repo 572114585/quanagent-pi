@@ -118,7 +118,7 @@ async function readText(
 	if (mimeType) {
 		// Image content is not supported yet.
 		return {
-			content: [],
+			output: [],
 			isError: true,
 			diagnostics: [
 				{
@@ -209,7 +209,7 @@ async function readText(
 	}
 
 	return {
-		content: outputText === "" ? [] : [{ type: "text" as const, text: outputText }],
+		output: outputText === "" ? [] : [{ type: "text" as const, text: outputText }],
 		...(details === undefined ? {} : { details }),
 		diagnostics,
 	};

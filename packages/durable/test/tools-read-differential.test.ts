@@ -18,7 +18,7 @@ function referenceRead(bytes: Uint8Array, path: string, offset: number | undefin
 	const mimeType = detectSupportedImageMimeType(bytes);
 	if (mimeType) {
 		return {
-			content: [],
+			output: [],
 			isError: true,
 			diagnostics: [
 				{
@@ -79,7 +79,7 @@ function referenceRead(bytes: Uint8Array, path: string, offset: number | undefin
 		});
 	}
 	return {
-		content: outputText === "" ? [] : [{ type: "text", text: outputText }],
+		output: outputText === "" ? [] : [{ type: "text", text: outputText }],
 		...(details === undefined ? {} : { details }),
 		diagnostics,
 	};
