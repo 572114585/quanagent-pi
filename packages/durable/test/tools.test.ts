@@ -73,6 +73,8 @@ function fakeApi(env: ExecutionEnv | undefined): {
 		retainedOutput: () => ({ text: output.join(""), truncated: false }),
 		diagnostic: (diagnostic: ToolDiagnostic) => diagnostics.push(diagnostic),
 		details: async () => {},
+		// No model: `read` treats it as one that sees images.
+		agent: async () => ({}),
 	} as unknown as ToolExecutionApi;
 	return { api, output, diagnostics };
 }
@@ -303,18 +305,15 @@ describe("durable tools", () => {
 			expect(textOutput(result)).toBe("one\ntwo");
 		});
 
-		it("reports images by content as unsupported", async () => {
+		it("returns images by content as one image block", async () => {
 			const env = createEnv();
-			const png = Uint8Array.from(
-				Buffer.from(
-					"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==",
-					"base64",
-				),
-			);
-			getOrThrow(await env.writeFile("image.txt", png, BACKGROUND_CONTEXT));
+			const data =
+				"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==";
+			getOrThrow(await env.writeFile("image.txt", Uint8Array.from(Buffer.from(data, "base64")), BACKGROUND_CONTEXT));
 			const result = await run(createReadTool(), { path: "image.txt" }, env);
-			expect(result).toMatchObject({ output: [], isError: true });
-			expect(diagnosticText(result)).toBe("image.txt is an image (image/png); reading images is not supported");
+			expect(result.output).toEqual([{ type: "image", data, mimeType: "image/png" }]);
+			expect(result.isError).toBeUndefined();
+			expect(diagnosticText(result)).toBe("Read image file [image/png].");
 		});
 	});
 

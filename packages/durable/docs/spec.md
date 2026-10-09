@@ -3294,12 +3294,35 @@ and the error text as its message. Their content is the durable partial output,
 if any, and `details` is the tool's last reported value, if any.
 
 `@earendil-works/pi-durable/tools` provides `read`, `write`, `edit`, and `bash`
-factories, ported from the agent harness tools, and the `CodingTools` extension
-with all four. They use only `api.env`; nothing
-installs them automatically. `read` does not return images yet. It reads a
-file through `openBinaryReader`: image detection reads the header (and a PNG's
-chunk headers), `scanLines` counts and locates the selected lines, and only the
-shown head is read and decoded, so its cost and transfer are bounded by the
+factories, ported from the agent harness tools, the `CodingTools` extension
+with all four, and `createCodingTools({ images })`, the same with an image
+processor for `read`. They use only `api.env`; nothing installs them
+automatically.
+
+`read` returns an image file, detected by content, as one image block with an
+`info` diagnostic (code `image`) saying its type and what was done to it, so
+programs get a bare `ImageContent`. An image must be read whole: unlike text,
+one that grows while it is read is read again. The limits are the
+conversation model's `inputLimits.images.resize`, each absent one
+`DEFAULT_IMAGE_LIMITS` (2000x2000 pixels, 4.5 MiB of base64). Without an
+`ImageProcessor`, `read` passes PNG, JPEG, GIF, and WebP through, undecoded,
+when the file size puts their base64 within the byte limit (checked before
+reading the file) and their header declares dimensions within the limits;
+otherwise, and for BMP, it returns an error result (code `unsupported_image`).
+With one, `await processor.prepare(bytes, mimeType, limits)` returns the image fitted to the limits, or `undefined` for an error result; the
+diagnostic says when its format changed or it was resized, with the factor that
+maps coordinates back. The Photon processor decodes every image, returns it as
+it is when it is upright, inline, and within the limits, and otherwise
+re-encodes it as PNG or JPEG (JPEG first for JPEG sources). `@earendil-works/pi-durable/images` provides `createPhotonImages(wasm)`,
+on Photon's WebAssembly, given its module or bytes; `/images/node` reads the
+wasm from the installed package and `/images/cloudflare` imports it as a
+Workers module. Neither is loaded unless imported. A conversation whose model
+does not take images still gets the image; pi-ai replaces it with a placeholder
+in requests, and the diagnostic says so.
+
+For text, `read` reads a file through `openBinaryReader`: image detection reads
+the header (and a PNG's chunk headers), `scanLines` counts and locates the
+selected lines, and only the shown head is read and decoded, so its cost and transfer are bounded by the
 output limits plus one pass over the file inside the environment. Its result is
 exactly that of decoding the whole file, splitting it into lines, and
 truncating the selection. A file that changes while it is read is read again
