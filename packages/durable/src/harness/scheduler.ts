@@ -187,6 +187,10 @@ export type TaskSchedulerOptions = {
  * it: a task's live ordinary owned work, which holds its outcome as `completing` and delays its abort handler, a
  * scope's tasks, a cascade's reach. No pass visits every live task; the sets below hold each pass's candidates.
  *
+ * The ownership indexes are bounded by live work: an owner edge and an ended task's ownership fields are kept only while
+ * something is listed below them in `#below`, so only the chains above live tasks are known, whole. Work that appears
+ * later below a dropped node finds it unknown and loads its chain from storage again.
+ *
  * Invariant: every task transition is decided and written by one callback serialized on the Session line. That covers
  * reservation, marks, runtime commits, finalization, and the synchronous step before each phase, which applies the
  * precedence rules and writes a fault or handover. Handlers and joins run off the line. An invocation ends inside the
@@ -221,18 +225,15 @@ export class TaskScheduler {
 	readonly #idleWaiters = new Waiters<ConversationId | undefined, void>();
 	/** Definition whose migration failed per task; retried only once the registry resolves another definition. */
 	readonly #failedMigrations = new Map<TaskId, { readonly task: AnyTask; readonly error: unknown }>();
-	/** Owner task of each loaded conversation, `null` when ownerless. */
+	/** Owner task of each known conversation, `null` when ownerless. */
 	readonly #edges = new Map<ConversationId, TaskId | null>();
-	/**
-	 * Tasks that own a loaded conversation; their nodes stay in `#settled` once terminal, and with them, through
-	 * `#knownChildren`, every task above them. Never cleared: about one entry per task on a subagent's chain.
-	 */
-	readonly #conversationOwners = new Set<TaskId>();
-	/**
-	 * Ownership fields of terminal tasks that walks pass through: conversation owners, chain loads, owners of known
-	 * tasks, and those with nodes listed below them. `#forget` drops the rest.
-	 */
+	/** Ownership fields of the known terminal tasks, which walks pass through. */
 	readonly #settled = new Map<TaskId, TaskNode>();
+	/**
+	 * Ended tasks and conversations found unneeded, dropped by `#sweep()` at the end of the commit's publication unless
+	 * needed again by then: a chain load installs nodes before the work below them is listed.
+	 */
+	readonly #dropQueue = new Set<Node>();
 	/**
 	 * The tree downward around live work: each node's child nodes that are live tasks or have nodes listed below them.
 	 * A conversation's parent is its owner task; ownerless ones with work are in `#roots`.
@@ -249,13 +250,6 @@ export class TaskScheduler {
 	readonly #finalizeChecks = new Set<TaskId>();
 	/** Live waiting tasks by each task in their `on`. */
 	readonly #waiters = new Map<TaskId, Set<TaskId>>();
-	/** Terminal tasks a chain load read; kept in `#settled`, so loaded chains stay loaded. */
-	readonly #pinned = new Set<TaskId>();
-	/**
-	 * Per task, how many known tasks (live, or in `#settled`) it owns directly. An ended task stays known while any does,
-	 * so the chain above every known task stays loaded.
-	 */
-	readonly #knownChildren = new Map<TaskId, number>();
 	/**
 	 * `failFast` waiters the next reconcile checks for a failed task in `on`: at open, when they start waiting, and when
 	 * one of their tasks fails.
@@ -267,6 +261,7 @@ export class TaskScheduler {
 	 */
 	readonly #abandoned = new Set<TaskId>();
 	#reconcileScheduled = false;
+	#sweepScheduled = false;
 	#cascadePending = false;
 	#unsubscribeRegistry: () => void = () => {};
 	#enabled = false;
@@ -478,6 +473,8 @@ export class TaskScheduler {
 			// A queued input below a cancelled owner is withdrawn, even after its cascade.
 			if (change.type !== "submission" || change.value.status !== "queued" || change.value.type !== "input")
 				continue;
+			// Only an owner with cancellation intent withdraws it; a later intent's mark runs the cascade then.
+			if (this.#intent.size === 0) continue;
 			const conversation = change.value.conversationId;
 			if (!this.#known(conversationNode(conversation)) || this.#belowCancelled({ conversation })) {
 				this.#cascadePending = true;
@@ -492,6 +489,7 @@ export class TaskScheduler {
 		}
 		// A cascade that a reservation or step found pending runs with the next commit of any kind.
 		if (this.#cascadePending) this.#scheduleReconcile();
+		this.#sweep();
 		if (!changed) return;
 		this.#settleIdle();
 		this.#kick();
@@ -676,7 +674,7 @@ export class TaskScheduler {
 	}
 
 	/**
-	 * Load the owner chains of the tasks in `#unloaded` and, with `queued`, of every conversation with queued submissions,
+	 * Load the owner chains of the tasks in `#unloaded` and, with `queued`, of every conversation with queued inputs,
 	 * on the Session line; returns the latter. Reads committed Storage directly, so it may run inside a commit callback.
 	 */
 	async #loadScopes(queued: boolean): Promise<ConversationId[]> {
@@ -688,7 +686,8 @@ export class TaskScheduler {
 		const submissions = await scanAll((cursor) =>
 			this.#storage.scanSubmissions({ status: "queued" }, SCAN_PAGE_SIZE, cursor, this.#context),
 		);
-		const conversations = [...new Set(submissions.map((submission) => submission.conversationId))];
+		const inputs = submissions.filter((submission) => submission.type === "input");
+		const conversations = [...new Set(inputs.map((submission) => submission.conversationId))];
 		for (const id of conversations) await this.#loadChain({ conversation: id });
 		return conversations;
 	}
@@ -735,43 +734,61 @@ export class TaskScheduler {
 
 	#setEdge(conversationId: ConversationId, owner: TaskId | null): void {
 		this.#edges.set(conversationId, owner);
-		if (owner !== null) this.#conversationOwners.add(owner);
-		// The conversation now hangs from its owner, or is a root.
+		// The conversation now hangs from its owner, or is a root; with nothing below it, it waits for the sweep.
 		this.#relist(conversationNode(conversationId));
+		this.#dropIfUnneeded(conversationNode(conversationId));
 	}
 
-	/** Keep a terminal task a chain load read, so walks pass through it; its own chain is not loaded yet. */
+	/** Know a terminal task a chain load read, so walks pass through it; its own chain is not loaded yet. */
 	#settle(id: TaskId, node: TaskNode): void {
 		this.#settled.set(id, node);
-		this.#pinned.add(id);
 		this.#unloaded.add(id);
-		this.#countChild(node, 1);
 		this.#relist(id);
+		this.#dropIfUnneeded(id);
 	}
 
-	/** Count a task that became known in its owner task's `#knownChildren`, or one that is forgotten out of it. */
-	#countChild(node: TaskNode, delta: 1 | -1): void {
-		if (node.owner === undefined) return;
-		const count = (this.#knownChildren.get(node.owner) ?? 0) + delta;
-		if (count === 0) this.#knownChildren.delete(node.owner);
-		else this.#knownChildren.set(node.owner, count);
+	/** Queue an ended task or a conversation for the sweep when nothing is listed below it. */
+	#dropIfUnneeded(node: Node): void {
+		if (typeof node !== "string" && this.#live.has(node)) return;
+		if (this.#below.has(node)) return;
+		this.#dropQueue.add(node);
+		this.#scheduleSweep();
 	}
 
 	/**
-	 * Forget ended task `id` unless walks up still need it: it owns a loaded conversation, a chain load read it, or it
-	 * owns a known task; then its owner, as far up as that changes. A loop: chains can be deeper than the call stack.
+	 * Sweep in a job of its own on the Session line, after the operation underway: a rejected commit, one with nothing to
+	 * write, and a read publish nothing, so the sweep at the end of `#observe` would not run for what they loaded.
 	 */
-	#forget(id: TaskId): void {
-		for (let at: TaskId | undefined = id; at !== undefined; ) {
-			const node = this.#settled.get(at);
-			if (node === undefined || this.#live.has(at)) return;
-			if (this.#conversationOwners.has(at) || this.#pinned.has(at) || this.#knownChildren.has(at)) return;
-			if (this.#below.has(at)) return;
-			this.#settled.delete(at);
-			this.#unloaded.delete(at);
-			this.#countChild(node, -1);
-			at = node.owner;
+	#scheduleSweep(): void {
+		if (this.#sweepScheduled || this.#closing) return;
+		this.#sweepScheduled = true;
+		this.#session
+			.readOnLine(async () => {
+				this.#sweepScheduled = false;
+				this.#sweep();
+			})
+			// Rejected only once the Session is closing or failed, when nothing is kept anyway.
+			.catch(() => {});
+	}
+
+	/**
+	 * Drop the queued nodes that are still unneeded: not live, nothing listed below. Runs once a publication is fully
+	 * tracked, and as a job of its own on the line, never inside an operation: work a commit creates below a chain its
+	 * own callback loaded keeps that chain. A flat loop: unlisting already queued every node on the way up that lost its
+	 * last listed node.
+	 */
+	#sweep(): void {
+		for (const node of this.#dropQueue) {
+			if (this.#below.has(node)) continue;
+			if (typeof node === "string") {
+				this.#edges.delete(conversationOf(node));
+				this.#roots.delete(conversationOf(node));
+			} else if (!this.#live.has(node)) {
+				this.#settled.delete(node);
+				this.#unloaded.delete(node);
+			}
 		}
+		this.#dropQueue.clear();
 	}
 
 	/**
@@ -793,13 +810,12 @@ export class TaskScheduler {
 			this.#release(node);
 			for (const waiter of this.#waiters.get(id) ?? []) this.#runnable.add(waiter);
 			this.#relist(id);
-			this.#forget(id);
+			this.#dropIfUnneeded(id);
 			return;
 		}
 		this.#live.set(id, record);
 		if (previous === undefined) {
 			if (!this.#known(parentNode(record))) this.#unloaded.add(id);
-			this.#countChild(record, 1);
 			this.#relist(id);
 		}
 		if (cancellationIntent(record)) this.#intent.add(id);
@@ -823,9 +839,9 @@ export class TaskScheduler {
 
 	/**
 	 * List `start` under its parent node in `#below` while it is a live task or has nodes listed below it, and unlist it
-	 * otherwise; then its parent, as far up as that changes. So `#below` holds exactly the tree around live work; an
-	 * ended parent that loses its last listed node may be forgotten (`#forget`). A loop, as ownership chains can be
-	 * deeper than the call stack.
+	 * otherwise; then its parent, as far up as that changes. So `#below` holds exactly the tree around live work; a
+	 * parent that loses its last listed node is queued for the sweep. A loop, as ownership chains can be deeper than the
+	 * call stack.
 	 */
 	#relist(start: Node): void {
 		let node: Node = start;
@@ -854,8 +870,7 @@ export class TaskScheduler {
 			} else {
 				deleteFrom(this.#below, parent, node);
 				if (this.#below.has(parent)) return;
-				// An ended task with nothing listed below it any more may be forgotten.
-				if (typeof parent !== "string") this.#forget(parent);
+				this.#dropIfUnneeded(parent);
 			}
 			node = parent;
 		}
@@ -1218,6 +1233,23 @@ export class TaskScheduler {
 		const failed = this.#failedMigrations.get(record.id);
 		if (failed?.task === task) return { reason: "migration_failed", error: failed.error };
 		return { task, migrates: true };
+	}
+
+	/** Sizes of the ownership indexes, for tests that bound the scheduler's memory. */
+	get indexSizes(): Readonly<
+		Record<"live" | "settled" | "edges" | "below" | "roots" | "unloaded" | "dropQueue", number>
+	> {
+		let below = 0;
+		for (const children of this.#below.values()) below += children.size;
+		return {
+			live: this.#live.size,
+			settled: this.#settled.size,
+			edges: this.#edges.size,
+			below,
+			roots: this.#roots.size,
+			unloaded: this.#unloaded.size,
+			dropQueue: this.#dropQueue.size,
+		};
 	}
 
 	/**

@@ -26,6 +26,7 @@
 - A throwing `onReport` no longer replaces the error being reported or becomes an unhandled rejection, a throwing `now()` is reported once and `Date.now` used, and a watch listener's error is reported as well as ending the watch with `listener_error`.
 - A task whose fault write failed no longer runs again in the same process.
 - The scheduler no longer visits every live task on each pass: abort cascades start only from tasks with cancellation intent, owned live work and idle scopes are walks down an in-memory ownership index, and reservation, finalization, and failFast checks keep their own candidate sets. A chain of 500 owned tasks that took 12 s to settle takes 50 ms, 20,000 take 1.5 s; a tool making 8000 parallel nested calls finishes in 2.7 s instead of 18.8 s, with one document per nested call instead of one growing index (`npm run bench:scheduler-fanout`).
+- The scheduler's ownership indexes are bounded by live work: it keeps a conversation's owner and an ended task's ownership only while live work is below them, instead of every conversation and subagent chain it ever saw. Work that later appears in an old conversation loads its chain from storage again. After 10,000 ended subagent calls under a live parent it kept 10,000 ended tasks and 10,001 conversation edges; now none of either beyond the parent's conversation (`npm run bench:scheduler-memory`). A queued input no longer makes the scheduler scan every queued submission when nothing is being cancelled.
 
 ## [1.1.0] - 2026-10-07
 
