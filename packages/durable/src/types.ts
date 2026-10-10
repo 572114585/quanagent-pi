@@ -213,6 +213,11 @@ export interface TaskRuntime<I, S, R, H extends object> extends DocumentObserver
 	 * another owns; resolves at once for a terminal one.
 	 */
 	abortOwned(id: TaskId, context: Context): Promise<void>;
+	/**
+	 * Live tasks this task owns directly, in ID order: also those an earlier invocation created, before a restart. Tasks
+	 * in conversations it owns are not included. Copies of the committed records.
+	 */
+	ownedTasks(context: Context): Promise<TaskRecord<JsonValue, JsonValue, JsonValue>[]>;
 	/** Outcomes of terminal tasks, in order; rejects when one is missing or not terminal. Used after a wait. */
 	outcomes<T>(ids: readonly TaskId<T>[], context: Context): Promise<TaskOutcome<T>[]>;
 	/**

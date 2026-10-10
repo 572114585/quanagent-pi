@@ -1583,6 +1583,24 @@ export class TaskScheduler {
 				this.#read(invocation, () =>
 					this.waitForTask(id, withAbortSignal(invocation.controller.signal, context)),
 				)) as ErasedRuntime["waitForTask"],
+			ownedTasks: (context) =>
+				this.#read(invocation, () =>
+					this.#session.readOnLine(async () => {
+						// The step that ends the invocation may have run on the line before this.
+						if (invocation.ended) throw endedError(invocation);
+						context.abortSignal?.throwIfAborted();
+						// Every live task is listed under its parent node, its owner task when it has one.
+						const owned: AnyTaskRecord[] = [];
+						for (const node of this.#below.get(invocation.taskId) ?? []) {
+							const record = typeof node === "string" ? undefined : this.#live.get(node);
+							if (record?.owner === invocation.taskId) owned.push(record);
+						}
+						// Copies, as from storage: the scheduler reads its own.
+						return owned
+							.sort((a, b) => a.id - b.id)
+							.map((record) => copyJson(record as unknown as JsonValue) as unknown as AnyTaskRecord);
+					}),
+				),
 			abortOwned: (id, context) =>
 				this.#read(invocation, async () => {
 					const bound = withAbortSignal(invocation.controller.signal, context);
