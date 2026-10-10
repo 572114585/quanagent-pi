@@ -5004,6 +5004,11 @@ These are contracts, not invitations to add defensive machinery:
 - **Long transactions:** an async commit callback holds the Session mutation
   line. Never await models, tools, processes, network calls, humans, a nested
   Session commit, or a Session waiter inside it. Use methods on the current `Tx`.
+- **Reads inside a commit:** `snapshot()`, `documentState()`, `watchDoc()`,
+  `getTask()`, and the other Session, Harness, and runtime reads may queue on the
+  mutation line, for example to load a document not in memory. Inside a commit
+  callback, which holds that line, such a read never resolves, and the line stays
+  held. Only a cache hit returns, so the hang is intermittent. Read through `tx`.
 - **Explicit creation:** only typed `tx.doc()` creates an absent document. Snapshot,
   state, and watch lookup return `undefined` instead.
 - **Family initialization:** the first acquisition of an absent family address
