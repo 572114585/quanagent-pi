@@ -12,6 +12,10 @@
 
 - The VM now polls for interrupts while it drains promise jobs, so a script such as `while (true) await null` is stopped at the same points as a synchronous loop
 
+### Fixed
+
+- Fixed `CodemodeSandbox` failing with a broken bridge error when the host runs under `node --watch` on Node 24 or 26, which posts `watch:import`/`watch:require` messages on the worker channel ([#10725](https://github.com/earendil-works/pi/issues/10725))
+
 ## [1.1.0] - 2026-10-07
 
 ### Added
