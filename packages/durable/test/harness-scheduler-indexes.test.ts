@@ -205,7 +205,7 @@ describe("TaskRuntime.ownedTasks", () => {
 		let opened = await openTasks(await openNodeSqliteStorage(path), [Hold, Probe]);
 		const root = await opened.harness.root(context);
 		opened.harness.resume();
-		// The probe owns: two held tasks, one that ends, a grandchild below one of them, and a conversation with a task.
+		// The probe owns: two held tasks, one that ends, a grandchild below the first, and a conversation with a task.
 		const ids = await root.commit(async (tx) => {
 			const probe = await tx.createTask(Probe, { name: "probe" }, { ownership: { kind: "conversation" } });
 			const first = await tx.createTask(Hold, { name: "first" }, { ownership: { kind: "task", taskId: probe } });
@@ -222,6 +222,9 @@ describe("TaskRuntime.ownedTasks", () => {
 		}, context);
 		gate("ends").resolve();
 		await opened.harness.waitForTask(ids.ends, context);
+		// The first ends too, but holds its outcome as `completing` while its grandchild runs: still live, so listed.
+		gate("first").resolve();
+		await eventually(async () => (await state(opened.harness, ids.first)).state.status === "completing");
 		gate("look.probe").resolve();
 		await eventually(() => owned.has("probe"));
 		expect(owned.get("probe")).toEqual([ids.first, ids.second]);

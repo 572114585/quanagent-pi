@@ -681,7 +681,6 @@ async function startNestedCall(
 			const input = (await tx.task(existing))?.input as ToolTaskInput | undefined;
 			const same =
 				input?.kind === "nested" &&
-				input.parent === runtime.taskId &&
 				input.call.name === name &&
 				jsonEqual(input.call.arguments as JsonValue, call.arguments as JsonValue);
 			if (!same) throw new Error(`Nested call ${call.id} was already made with another tool or other arguments`);
