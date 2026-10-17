@@ -199,6 +199,17 @@
         }
       }
     },
+    "schedule": {
+      "type": "object",
+      "properties": {
+        "runTimeoutMinutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 35791,
+          "default": 60
+        }
+      }
+    },
     "hideThinkingBlock": {
       "type": "boolean",
       "default": false

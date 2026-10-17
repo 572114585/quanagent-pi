@@ -5,6 +5,7 @@
  * createAgentSession() options. The SDK does the heavy lifting.
  */
 
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { type ImageContent, modelsAreEqual } from "@earendil-works/pi-ai";
 import { setCapabilityOverrides } from "@earendil-works/pi-tui";
@@ -34,6 +35,7 @@ import { createProjectTrustContext } from "./cli/project-trust.ts";
 import { selectSession } from "./cli/session-picker.ts";
 import { shouldRunFirstTimeSetup, showFirstTimeSetup, showStartupSelector } from "./cli/startup-ui.ts";
 import { APP_NAME, ENV_SESSION_DIR, expandTildePath, getAgentDir, getPackageDir, VERSION } from "./config.ts";
+import type { AgentSession } from "./core/agent-session.ts";
 import { type CreateAgentSessionRuntimeFactory, createAgentSessionRuntime } from "./core/agent-session-runtime.ts";
 import {
 	type AgentSessionRuntimeDiagnostic,
@@ -49,6 +51,9 @@ import { resolveCliModel, resolveModelScope, type ScopedModel } from "./core/mod
 import { ModelRuntime } from "./core/model-runtime.ts";
 import { restoreStdout, takeOverStdout } from "./core/output-guard.ts";
 import { type AppMode, resolveProjectTrusted } from "./core/project-trust.ts";
+import { createScheduleHost } from "./core/schedule/host.ts";
+import { ScheduleOutbox } from "./core/schedule/outbox.ts";
+import { createScheduleExecutionSession } from "./core/schedule/sessions.ts";
 import type { CreateAgentSessionOptions } from "./core/sdk.ts";
 import {
 	formatMissingSessionCwdPrompt,
@@ -63,6 +68,7 @@ import { printTimings, resetTimings, time } from "./core/timings.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
 import { builtInExtensions } from "./extensions/index.ts";
 import { loadMcpCommand } from "./extensions/mcp/cli.lazy.ts";
+import { createScheduleExtension } from "./extensions/schedule/index.ts";
 import { runMigrations, showDeprecationWarnings } from "./migrations.ts";
 import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.ts";
 import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./modes/interactive/theme/theme.ts";
@@ -730,6 +736,82 @@ export async function main(args: string[], options?: MainOptions) {
 	const resolvedSkillPaths = resolveCliPaths(cwd, parsed.skills);
 	const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
 	const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
+	let scheduleModelRuntime: AgentSession["modelRuntime"] | undefined;
+	const scheduleSessions = new Map<string, AgentSession>();
+	const scheduleOutbox = new ScheduleOutbox(join(agentDir, "schedule-delivery"));
+	let scheduleTransition = Promise.resolve();
+	const scheduleHost = createScheduleHost({
+		storageDir: join(agentDir, "schedule"),
+		runTimeoutMs: (startupSettingsManager.getSettings().schedule?.runTimeoutMinutes ?? 60) * 60_000,
+		createExecutionSession: async (run, signal) => {
+			const binding = run.binding;
+			signal.throwIfAborted();
+			const trusted =
+				projectTrustByCwd.get(binding.cwd) ??
+				(!hasTrustRequiringProjectResources(binding.cwd) || trustStore.get(binding.cwd) === true);
+			if (!trusted) throw new Error("The original workspace needs project trust before background execution.");
+			return createScheduleExecutionSession(run, {
+				storageDir: join(agentDir, "schedule"),
+				source: scheduleSessions.get(binding.sessionId),
+				signal,
+				projectTrusted: trusted,
+				session: {
+					modelRuntime: scheduleModelRuntime,
+					tools: parsed.tools,
+					excludeTools: parsed.excludeTools,
+					noTools: parsed.noTools ? "all" : parsed.noBuiltinTools ? "builtin" : undefined,
+				},
+				resources: {
+					extensionFactories: extensionFactories.map(
+						(extension): InlineExtension =>
+							typeof extension !== "function" && extension.name === "schedule" && extension.builtin
+								? {
+										...extension,
+										factory: createScheduleExtension(scheduleHost, {
+											background: true,
+											timeZone: run.timeZone,
+											ownerId: binding.ownerId,
+											getBinding: () => binding,
+											ui: false,
+										}),
+									}
+								: extension,
+					),
+					additionalExtensionPaths: resolvedExtensionPaths,
+					additionalSkillPaths: resolvedSkillPaths,
+					additionalPromptTemplatePaths: resolvedPromptTemplatePaths,
+					additionalThemePaths: resolvedThemePaths,
+					noExtensions: parsed.noExtensions,
+					disabledBuiltinExtensions: parsed.noMcp ? ["mcp"] : undefined,
+					noSkills: parsed.noSkills,
+					noPromptTemplates: parsed.noPromptTemplates,
+					noThemes: parsed.noThemes,
+					noContextFiles: parsed.noContextFiles,
+					systemPrompt: parsed.systemPrompt,
+					appendSystemPrompt: parsed.appendSystemPrompt,
+				},
+			});
+		},
+		deliverNotification: (notice, resend) => scheduleOutbox.enqueueNotification(notice, resend),
+		onError: (error) => console.error(`Schedule: ${error.message}`),
+	});
+	const runtimeExtensionFactories = extensionFactories.map((extension): InlineExtension => {
+		if (typeof extension === "function" || extension.name !== "schedule" || !extension.builtin) return extension;
+		return {
+			...extension,
+			factory: createScheduleExtension(scheduleHost, {
+				agentDir,
+				outbox: scheduleOutbox,
+				activateToolsOnStart: parsed.tools === undefined && !parsed.noTools,
+				getSession: (ctx) => scheduleSessions.get(ctx.sessionManager.getSessionId()),
+				isEnabled: () => appMode === "interactive" && !isTruthyEnvFlag(process.env.PI_STARTUP_BENCHMARK),
+				beforeStart: () => scheduleTransition,
+				onShutdown: (ctx, event) => {
+					if (event.reason !== "reload") scheduleSessions.delete(ctx.sessionManager.getSessionId());
+				},
+			}),
+		};
+	});
 	const createRuntime: CreateAgentSessionRuntimeFactory = async ({
 		cwd,
 		agentDir,
@@ -792,10 +874,18 @@ export async function main(args: string[], options?: MainOptions) {
 				noContextFiles: parsed.noContextFiles,
 				systemPrompt: parsed.systemPrompt,
 				appendSystemPrompt: parsed.appendSystemPrompt,
-				extensionFactories,
+				extensionFactories: runtimeExtensionFactories,
+				extensionsOverride: (result) => {
+					if (!result.extensions.some((extension) => extension.path === "builtin:schedule")) {
+						scheduleTransition = scheduleTransition.then(() => scheduleHost.close());
+					}
+					return result;
+				},
 			},
 		});
 		const { settingsManager, modelRuntime, resourceLoader } = services;
+		scheduleModelRuntime = modelRuntime;
+		await scheduleTransition;
 		const diagnostics: AgentSessionRuntimeDiagnostic[] = [
 			...projectTrustDiagnostics,
 			...services.diagnostics,
@@ -852,6 +942,7 @@ export async function main(args: string[], options?: MainOptions) {
 			customTools: sessionOptions.customTools,
 		});
 		const cliThinkingOverride = parsed.thinking !== undefined || cliThinkingFromModel;
+		scheduleSessions.set(created.session.sessionId, created.session);
 		if (created.session.model && cliThinkingOverride) {
 			created.session.setThinkingLevel(created.session.thinkingLevel);
 		}
@@ -867,6 +958,14 @@ export async function main(args: string[], options?: MainOptions) {
 		cwd: sessionManager.getCwd(),
 		agentDir,
 		sessionManager,
+		hostLifecycle: {
+			beforeSessionOpen: (path) => scheduleHost.reserveSessionFile(path),
+			onDispose: async () => {
+				await scheduleTransition;
+				await scheduleHost.close();
+				scheduleSessions.clear();
+			},
+		},
 	});
 	time("createAgentSessionRuntime");
 	const { services, session, modelFallbackMessage } = runtime;

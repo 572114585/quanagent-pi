@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, registerFauxProvider } from "@earendil-works/pi-ai/compat";
@@ -97,7 +97,7 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 		const runtimeHost = await createAgentSessionRuntime(createRuntime, {
 			cwd: tempDir,
 			agentDir: tempDir,
-			sessionManager: SessionManager.create(tempDir),
+			sessionManager: SessionManager.create(tempDir, join(tempDir, "sessions")),
 		});
 		await runtimeHost.session.bindExtensions({});
 
@@ -178,6 +178,74 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 		expect(result.cancelled).toBe(true);
 		expect(runtimeHost.session.sessionFile).toBe(originalSessionFile);
 		expect(events).toEqual([{ type: "session_before_switch", reason: "new", targetSessionFile: undefined }]);
+	});
+
+	it("cleans process-owned resources once, without closing them on session switches", async () => {
+		const { runtimeHost } = await createRuntimeHost(() => {});
+		const phases: string[] = [];
+		runtimeHost.setHostLifecycle({
+			beforeSessionOpen: async () => {
+				phases.push("reserve");
+				return () => phases.push("release");
+			},
+			onDispose: async () => {
+				phases.push("dispose host");
+			},
+		});
+		await runtimeHost.session.prompt("original");
+		const original = runtimeHost.session.sessionFile!;
+		await runtimeHost.newSession();
+		expect(phases).toEqual([]);
+		await runtimeHost.switchSession(original);
+		expect(phases).toEqual(["reserve", "release"]);
+		await runtimeHost.dispose();
+		await runtimeHost.dispose();
+		expect(phases).toEqual(["reserve", "release", "dispose host"]);
+	});
+
+	it("releases an opening reservation when session validation fails", async () => {
+		const { runtimeHost } = await createRuntimeHost(() => {});
+		let released = false;
+		runtimeHost.setHostLifecycle({
+			beforeSessionOpen: async () => () => {
+				released = true;
+			},
+		});
+		const original = runtimeHost.session;
+		const invalid = join(runtimeHost.cwd, "invalid.jsonl");
+		writeFileSync(invalid, '{"type":"event","data":"not a session"}\n');
+		await expect(runtimeHost.switchSession(invalid)).rejects.toThrow();
+		expect(released).toBe(true);
+		expect(runtimeHost.session).toBe(original);
+	});
+
+	it("waits for the host's current writer before invalidating its session", async () => {
+		const { runtimeHost } = await createRuntimeHost(() => {});
+		const original = runtimeHost.session;
+		let finish!: () => void;
+		let waiting = false;
+		let released = false;
+		const gate = new Promise<void>((resolve) => {
+			finish = resolve;
+		});
+		runtimeHost.setHostLifecycle({
+			beforeSessionClose: async (session) => {
+				expect(session).toBe(original);
+				waiting = true;
+				await gate;
+				return () => {
+					released = true;
+				};
+			},
+		});
+		const replacement = runtimeHost.newSession();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(waiting).toBe(true);
+		expect(runtimeHost.session).toBe(original);
+		finish();
+		await replacement;
+		expect(released).toBe(true);
+		expect(runtimeHost.session).not.toBe(original);
 	});
 
 	it("runs beforeSessionInvalidate after session_shutdown and before rebindSession", async () => {

@@ -246,8 +246,34 @@ export type {
 export { DefaultPackageManager } from "./core/package-manager.ts";
 export type { ResourceCollision, ResourceDiagnostic, ResourceLoader } from "./core/resource-loader.ts";
 export { DefaultResourceLoader, loadProjectContextFiles } from "./core/resource-loader.ts";
+export {
+	createScheduleExecutionSession,
+	createScheduleHost,
+	type ScheduleBinding,
+	type ScheduleCreatedNotification,
+	type ScheduleDeliveryAdapter,
+	ScheduleDeliveryContextError,
+	type ScheduleDeliveryPart,
+	type ScheduleDeliveryTarget,
+	type ScheduleExecution,
+	type ScheduleExecutionSessionOptions,
+	ScheduleHost,
+	type ScheduleHostOptions,
+	type ScheduleNotification,
+	ScheduleOutbox,
+	ScheduleOutboxWorker,
+	type ScheduleRule,
+	type ScheduleRun,
+	type ScheduleSessionLease,
+	type ScheduleTask,
+	type ScheduleTaskSummary,
+	type ScheduleTaskUpdate,
+	type ScheduleTimingInput,
+	type ScheduleWeixinBinding,
+} from "./core/schedule/index.ts";
 // SDK for programmatic usage
 export {
+	type AgentSessionHostLifecycle,
 	AgentSessionRuntime,
 	type AgentSessionRuntimeDiagnostic,
 	type AgentSessionServices,
@@ -287,6 +313,7 @@ export {
 	type CustomEntry,
 	type CustomMessageEntry,
 	type FileEntry,
+	getDefaultSessionDir,
 	getLatestCompactionEntry,
 	type ModelChangeEntry,
 	migrateSessionEntries,
@@ -411,6 +438,7 @@ export { type CodemodeExtensionOptions, createCodemodeExtension } from "./extens
 export type { CodemodeStoreEntryData, CodemodeToolDetails } from "./extensions/codemode/tool.ts";
 export type { LoadedMcpConfig, McpExposure, McpServerConfig, McpServerEntry } from "./extensions/mcp/config.ts";
 export { createMcpExtension, type McpExtensionOptions, type McpTransportFactory } from "./extensions/mcp/index.ts";
+export { createScheduleExtension, type ScheduleExtensionOptions } from "./extensions/schedule/index.ts";
 export { createToolSearchExtension } from "./extensions/tool-search/index.ts";
 // Main entry point
 export { type MainOptions, main } from "./main.ts";

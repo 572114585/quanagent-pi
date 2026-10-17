@@ -242,6 +242,11 @@ export const SettingsSchema = Type.Object(
 		compaction: Type.Optional(CompactionSettingsSchema),
 		branchSummary: Type.Optional(BranchSummarySettingsSchema),
 		retry: Type.Optional(RetrySettingsSchema),
+		schedule: Type.Optional(
+			Type.Object({
+				runTimeoutMinutes: Type.Optional(Type.Integer({ minimum: 1, maximum: 35791, default: 60 })),
+			}),
+		),
 		hideThinkingBlock: Type.Optional(Type.Boolean({ default: SETTINGS_DEFAULTS.hideThinkingBlock })),
 		showCacheMissNotices: Type.Optional(
 			Type.Boolean({

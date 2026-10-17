@@ -59,6 +59,14 @@ See the checked [sessions example](../examples/sdk/11-sessions.ts) for creating,
 
 After a runtime replacement, subscriptions belong to the old `AgentSession` and must be rebound. See the [session runtime example](../examples/sdk/13-session-runtime.ts).
 
+## Background schedules
+
+`createScheduleHost()` owns scheduling for the process. Supply `createExecutionSession(run, signal)` using `createScheduleExecutionSession(run, options)`, and install `createScheduleExtension(host, bindingOptions)` in foreground resource loaders. Authorize each saved identity before constructing a background session; attach active sources so snapshots recognize settled run boundaries.
+
+Each execution uses the source branch's completed context in a new session and log. It never prompts the original session or writes results back into it. Pass the host's `modelRuntime`, resource options, and tool restrictions to the helper, and use `background: true` for its schedule extension. Supply `deliverNotification` to accept durable creation receipts and run results. `ScheduleOutbox.enqueueNotification()` hands both kinds to a bridge without waiting for network delivery.
+
+The host defaults to four workers and `runTimeoutMs: 3_600_000`; Weixin embedders also set `ownerConcurrency: 1`. Close the host only on process disposal or extension disable, through `AgentSessionRuntime.hostLifecycle.onDispose` when applicable. See [Scheduled tasks](schedule.md) for storage migration, recovery, permissions, delivery, and SDK wiring.
+
 ## Prompting
 
 `prompt()` handles extension commands and expands file-based prompt templates before ordinary user messages enter the agent. For an accepted agent run, it resolves after the run finishes, including automatic retries.

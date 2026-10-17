@@ -25,6 +25,13 @@ export interface CreateAgentSessionRuntimeResult extends CreateAgentSessionResul
 	diagnostics: AgentSessionRuntimeDiagnostic[];
 }
 
+/** Resources owned by the process rather than by any replacement session. */
+export interface AgentSessionHostLifecycle {
+	beforeSessionOpen?(path: string): Promise<() => void>;
+	beforeSessionClose?(session: AgentSession): Promise<() => void>;
+	onDispose?(): Promise<void>;
+}
+
 /**
  * Creates a full runtime for a target cwd and session manager.
  *
@@ -79,6 +86,8 @@ export class AgentSessionRuntime {
 	private readonly createRuntime: CreateAgentSessionRuntimeFactory;
 	private _diagnostics: AgentSessionRuntimeDiagnostic[];
 	private _modelFallbackMessage?: string;
+	private hostLifecycle?: AgentSessionHostLifecycle;
+	private disposal?: Promise<void>;
 
 	constructor(
 		_session: AgentSession,
@@ -116,6 +125,10 @@ export class AgentSessionRuntime {
 
 	setRebindSession(rebindSession?: (session: AgentSession) => Promise<void>): void {
 		this.rebindSession = rebindSession;
+	}
+
+	setHostLifecycle(lifecycle: AgentSessionHostLifecycle): void {
+		this.hostLifecycle = lifecycle;
 	}
 
 	/**
@@ -165,16 +178,21 @@ export class AgentSessionRuntime {
 	}
 
 	private async teardownCurrent(reason: SessionShutdownEvent["reason"], targetSessionFile?: string): Promise<void> {
-		// Settle any active response first so the aborted turn (including tool
-		// results) is persisted to the outgoing session before it is replaced.
-		await this.session.abort();
-		await emitSessionShutdownEvent(this.session.extensionRunner, {
-			type: "session_shutdown",
-			reason,
-			targetSessionFile,
-		});
-		this.beforeSessionInvalidate?.();
-		this.session.dispose();
+		const release = await this.hostLifecycle?.beforeSessionClose?.(this.session);
+		try {
+			// Settle any active response first so the aborted turn (including tool
+			// results) is persisted to the outgoing session before it is replaced.
+			await this.session.abort();
+			await emitSessionShutdownEvent(this.session.extensionRunner, {
+				type: "session_shutdown",
+				reason,
+				targetSessionFile,
+			});
+			this.beforeSessionInvalidate?.();
+			this.session.dispose();
+		} finally {
+			release?.();
+		}
 	}
 
 	private apply(result: CreateAgentSessionRuntimeResult): void {
@@ -206,21 +224,26 @@ export class AgentSessionRuntime {
 			return beforeResult;
 		}
 
-		const previousSessionFile = this.session.sessionFile;
-		const sessionManager = SessionManager.open(sessionPath, undefined, options?.cwdOverride);
-		assertSessionCwdExists(sessionManager, this.cwd);
-		await this.teardownCurrent("resume", sessionManager.getSessionFile());
-		this.apply(
-			await this.createRuntime({
-				cwd: sessionManager.getCwd(),
-				agentDir: this.services.agentDir,
-				sessionManager,
-				sessionStartEvent: { type: "session_start", reason: "resume", previousSessionFile },
-				projectTrustContext: options?.projectTrustContextFactory?.(sessionManager.getCwd()),
-			}),
-		);
-		await this.finishSessionReplacement(options?.withSession);
-		return { cancelled: false };
+		const release = await this.hostLifecycle?.beforeSessionOpen?.(sessionPath);
+		try {
+			const previousSessionFile = this.session.sessionFile;
+			const sessionManager = SessionManager.open(sessionPath, undefined, options?.cwdOverride);
+			assertSessionCwdExists(sessionManager, this.cwd);
+			await this.teardownCurrent("resume", sessionManager.getSessionFile());
+			this.apply(
+				await this.createRuntime({
+					cwd: sessionManager.getCwd(),
+					agentDir: this.services.agentDir,
+					sessionManager,
+					sessionStartEvent: { type: "session_start", reason: "resume", previousSessionFile },
+					projectTrustContext: options?.projectTrustContextFactory?.(sessionManager.getCwd()),
+				}),
+			);
+			await this.finishSessionReplacement(options?.withSession);
+			return { cancelled: false };
+		} finally {
+			release?.();
+		}
 	}
 
 	async newSession(options?: {
@@ -381,33 +404,47 @@ export class AgentSessionRuntime {
 			return beforeResult;
 		}
 
-		const previousSessionFile = this.session.sessionFile;
-		if (!sourceAlreadyStored) {
-			copyFileSync(resolvedPath, destinationPath, constants.COPYFILE_EXCL);
-		}
+		const release = await this.hostLifecycle?.beforeSessionOpen?.(destinationPath);
+		try {
+			const previousSessionFile = this.session.sessionFile;
+			if (!sourceAlreadyStored) {
+				copyFileSync(resolvedPath, destinationPath, constants.COPYFILE_EXCL);
+			}
 
-		const sessionManager = SessionManager.open(destinationPath, sessionDir, cwdOverride);
-		assertSessionCwdExists(sessionManager, this.cwd);
-		await this.teardownCurrent("resume", sessionManager.getSessionFile());
-		this.apply(
-			await this.createRuntime({
-				cwd: sessionManager.getCwd(),
-				agentDir: this.services.agentDir,
-				sessionManager,
-				sessionStartEvent: { type: "session_start", reason: "resume", previousSessionFile },
-			}),
-		);
-		await this.finishSessionReplacement();
-		return { cancelled: false };
+			const sessionManager = SessionManager.open(destinationPath, sessionDir, cwdOverride);
+			assertSessionCwdExists(sessionManager, this.cwd);
+			await this.teardownCurrent("resume", sessionManager.getSessionFile());
+			this.apply(
+				await this.createRuntime({
+					cwd: sessionManager.getCwd(),
+					agentDir: this.services.agentDir,
+					sessionManager,
+					sessionStartEvent: { type: "session_start", reason: "resume", previousSessionFile },
+				}),
+			);
+			await this.finishSessionReplacement();
+			return { cancelled: false };
+		} finally {
+			release?.();
+		}
 	}
 
 	async dispose(): Promise<void> {
-		await emitSessionShutdownEvent(this.session.extensionRunner, {
-			type: "session_shutdown",
-			reason: "quit",
-		});
-		this.beforeSessionInvalidate?.();
-		this.session.dispose();
+		this.disposal ??= this.disposeHost();
+		await this.disposal;
+	}
+
+	private async disposeHost(): Promise<void> {
+		try {
+			await this.hostLifecycle?.onDispose?.();
+		} finally {
+			try {
+				await emitSessionShutdownEvent(this.session.extensionRunner, { type: "session_shutdown", reason: "quit" });
+			} finally {
+				this.beforeSessionInvalidate?.();
+				this.session.dispose();
+			}
+		}
 	}
 }
 
@@ -424,17 +461,20 @@ export async function createAgentSessionRuntime(
 		agentDir: string;
 		sessionManager: SessionManager;
 		sessionStartEvent?: SessionStartEvent;
+		hostLifecycle?: AgentSessionHostLifecycle;
 	},
 ): Promise<AgentSessionRuntime> {
 	assertSessionCwdExists(options.sessionManager, options.cwd);
 	const result = await createRuntime(options);
-	return new AgentSessionRuntime(
+	const runtime = new AgentSessionRuntime(
 		result.session,
 		result.services,
 		createRuntime,
 		result.diagnostics,
 		result.modelFallbackMessage,
 	);
+	if (options.hostLifecycle) runtime.setHostLifecycle(options.hostLifecycle);
+	return runtime;
 }
 
 export {
