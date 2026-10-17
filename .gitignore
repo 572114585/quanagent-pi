@@ -4,7 +4,6 @@ dist/
 *.log
 .DS_Store
 *.tsbuildinfo
-# packages/*/node_modules/
 packages/*/dist/
 packages/*/dist-chrome/
 packages/*/dist-firefox/
@@ -14,6 +13,32 @@ packages/ai/src/providers/.model-generation-*/
 
 # Environment
 .env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+auth.json
+credentials*.json
+.wechatbot/
+
+# Runtime data
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+qr*.png
+*qrcode*.png
+
+# Session dumps, recordings, design sources
+*.cast
+/session.jsonl
+/compact.jsonl
+*.eps
+*.zip
+*.tar
+*.tar.gz
+**/.temp-images/
 
 # Editor files
 .vscode/
