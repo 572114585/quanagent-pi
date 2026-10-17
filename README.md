@@ -82,6 +82,7 @@ This monorepo contains the Pi CLI and its supporting libraries.
 | **[@earendil-works/pi-agent-core](packages/agent)** | Agent runtime with tool calling and state management |
 | **[@earendil-works/pi-coding-agent](packages/coding-agent)** | Interactive coding agent CLI |
 | **[@earendil-works/pi-tui](packages/tui)** | Terminal UI library with differential rendering |
+| **[@earendil-works/pi-weixin-bridge](packages/weixin-bridge)** | Weixin bot with per-user sessions, media and scheduled delivery (private workspace) |
 
 For Slack/chat automation and workflows see [earendil-works/pi-chat](https://github.com/earendil-works/pi-chat).
 

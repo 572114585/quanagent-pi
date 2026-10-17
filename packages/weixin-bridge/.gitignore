@@ -1,0 +1,10 @@
+/config.json
+/workspace/
+/node_modules/
+/dist/
+*.db
+*.sqlite*
+*.log
+/qr*.png
+/skills/paddleocr/__pycache__/
+/src/demo/verifycode.txt

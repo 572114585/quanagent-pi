@@ -1,0 +1,9 @@
+{
+	"owner": "your-weixin-user-id",
+	"allowlist": [],
+	"provider": "your-provider",
+	"model": "your-model-id",
+	"schedule": {
+		"runTimeoutMinutes": 60
+	}
+}
