@@ -302,6 +302,12 @@ export {
 	type PromptTemplate,
 } from "./core/sdk.ts";
 export {
+	acquireSessionWriteLease,
+	isSessionBusy,
+	SessionBusyError,
+	type SessionWriteLease,
+} from "./core/session-lock.ts";
+export {
 	type BranchSummaryEntry,
 	buildContextEntries,
 	buildSessionContext,
@@ -459,6 +465,7 @@ export {
 	type RpcSessionState,
 	runPrintMode,
 	runRpcMode,
+	toJsonEvent,
 } from "./modes/index.ts";
 // UI components for extensions
 export {

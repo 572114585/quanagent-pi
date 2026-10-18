@@ -55,6 +55,8 @@ See the checked [sessions example](../examples/sdk/11-sessions.ts) for creating,
 
 `session.dispose()` aborts active work, invalidates extension contexts, disconnects from the agent, and removes event listeners. Call it when the session is no longer needed.
 
+Persistent SDK sessions hold a cross-process write lease. A second CLI, Web, or SDK writer process receives `SessionBusyError`; sessions in the same process share the lease, so a runtime can replace a session it still owns. Dispose the first session before reopening it from another process; when work is active, use `await session.abort()` before disposal to wait for it to stop. For history readers, `SessionManager.openReadOnly(path)` loads an in-memory view without repairing, migrating, or locking the source file.
+
 `AgentSessionRuntime` adds `newSession()`, `switchSession()`, `fork()`, and `importFromJsonl()`. Each operation replaces the active `AgentSession` and recreates services for the target working directory.
 
 After a runtime replacement, subscriptions belong to the old `AgentSession` and must be rebound. See the [session runtime example](../examples/sdk/13-session-runtime.ts).

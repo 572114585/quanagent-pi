@@ -5,6 +5,7 @@
 ### Added
 
 - Added the built-in `schedule` extension with independent background sessions, completed-context snapshots, six timing rules, task management, run history, per-run timeouts, and durable Weixin creation receipts and result delivery. See [Scheduled tasks](docs/schedule.md).
+- Added cross-process session write leases, read-only session loading, and the public `toJsonEvent` serializer for custom clients.
 
 ## [1.3.0] - 2026-10-15
 

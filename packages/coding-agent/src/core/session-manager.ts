@@ -38,6 +38,7 @@ import {
 	createCompactionSummaryMessage,
 	createCustomMessage,
 } from "./messages.ts";
+import { type AcquireLeaseOptions, acquireSessionWriteLease, type SessionWriteLease } from "./session-lock.ts";
 export const CURRENT_SESSION_VERSION = 3;
 
 export interface SessionHeader {
@@ -624,7 +625,7 @@ function parseSessionEntryLine(line: string): FileEntry | null {
 }
 
 /** Exported for testing */
-export function loadEntriesFromFile(filePath: string): FileEntry[] {
+export function loadEntriesFromFile(filePath: string, repair = true, writeLease?: SessionWriteLease): FileEntry[] {
 	const resolvedFilePath = normalizePath(filePath);
 	if (!existsSync(resolvedFilePath)) return [];
 
@@ -665,7 +666,15 @@ export function loadEntriesFromFile(filePath: string): FileEntry[] {
 		return [];
 	}
 
-	if (pending) appendFileSync(resolvedFilePath, "\n");
+	if (pending && repair) {
+		const lease = writeLease ?? acquireSessionWriteLease(resolvedFilePath);
+		try {
+			lease.assertOwned();
+			appendFileSync(resolvedFilePath, "\n");
+		} finally {
+			if (!writeLease) lease.release();
+		}
+	}
 	return entries;
 }
 
@@ -996,6 +1005,49 @@ export class SessionManager {
 	private labelsById: Map<string, string> = new Map();
 	private labelTimestampsById: Map<string, string> = new Map();
 	private leafId: string | null = null;
+	private writeLease: SessionWriteLease | undefined;
+
+	/**
+	 * Own this file until the returned release function is called. Reload under
+	 * the lock. Session owners pass `shared` so a replacement runtime may keep
+	 * writing a file another in-process session owns; maintenance callers keep
+	 * the default exclusive behavior.
+	 */
+	acquireWriteLease(options: AcquireLeaseOptions = {}): () => void {
+		if (!this.persist || !this.sessionFile) return () => {};
+		if (this.writeLease) throw new Error("Session manager already has a writer");
+		const lease = acquireSessionWriteLease(this.sessionFile, options);
+		this.writeLease = lease;
+		try {
+			if (existsSync(this.sessionFile))
+				this._setSessionFile(this.sessionFile, loadEntriesFromFile(this.sessionFile, true, lease));
+		} catch (error) {
+			this.writeLease = undefined;
+			lease.release();
+			throw error;
+		}
+		return () => {
+			if (this.writeLease === lease) this.writeLease = undefined;
+			lease.release();
+		};
+	}
+
+	private _withWriteLock<T>(action: () => T): T {
+		if (!this.persist || !this.sessionFile) return action();
+		if (this.writeLease?.path === resolve(this.sessionFile)) {
+			this.writeLease.assertOwned();
+			return action();
+		}
+		const lease = acquireSessionWriteLease(this.sessionFile);
+		const previous = this.writeLease;
+		this.writeLease = lease;
+		try {
+			return action();
+		} finally {
+			this.writeLease = previous;
+			lease.release();
+		}
+	}
 
 	private constructor(
 		cwd: string,
@@ -1089,9 +1141,13 @@ export class SessionManager {
 			this.fileEntries = entries;
 			this.sessionId = header.id;
 
-			if (migrateToCurrentVersion(this.fileEntries)) {
-				this._rewriteFile();
-			}
+			if ((header.version ?? 1) < CURRENT_SESSION_VERSION && this.persist && this.sessionFile) {
+				this._withWriteLock(() => {
+					// Another writer may have appended since open() read the header.
+					this.fileEntries = loadEntriesFromFile(this.sessionFile!, true, this.writeLease);
+					if (migrateToCurrentVersion(this.fileEntries)) this._rewriteFile();
+				});
+			} else if (migrateToCurrentVersion(this.fileEntries)) this._rewriteFile();
 		} else {
 			this.newSession(options);
 			this.fileEntries = this.fileEntries.concat(entries);
@@ -1123,14 +1179,16 @@ export class SessionManager {
 
 	private _rewriteFile(): void {
 		if (!this.persist || !this.sessionFile) return;
-		const fd = openSync(this.sessionFile, "w");
-		try {
-			for (const entry of this.fileEntries) {
-				writeFileSync(fd, `${JSON.stringify(entry)}\n`);
+		this._withWriteLock(() => {
+			const fd = openSync(this.sessionFile!, "w");
+			try {
+				for (const entry of this.fileEntries) {
+					writeFileSync(fd, `${JSON.stringify(entry)}\n`);
+				}
+			} finally {
+				closeSync(fd);
 			}
-		} finally {
-			closeSync(fd);
-		}
+		});
 	}
 
 	isPersisted(): boolean {
@@ -1171,21 +1229,22 @@ export class SessionManager {
 
 	_persist(entry: SessionEntry): void {
 		if (!this.persist || !this.sessionFile) return;
-
-		if (!this.flushed) {
-			if (!this._hasConversation()) return;
-			const fd = openSync(this.sessionFile, "wx");
-			try {
-				for (const e of this.fileEntries) {
-					writeFileSync(fd, `${JSON.stringify(e)}\n`);
+		this._withWriteLock(() => {
+			if (!this.flushed) {
+				if (!this._hasConversation()) return;
+				const fd = openSync(this.sessionFile!, "wx");
+				try {
+					for (const e of this.fileEntries) {
+						writeFileSync(fd, `${JSON.stringify(e)}\n`);
+					}
+				} finally {
+					closeSync(fd);
 				}
-			} finally {
-				closeSync(fd);
+				this.flushed = true;
+			} else {
+				appendFileSync(this.sessionFile!, `${JSON.stringify(entry)}\n`);
 			}
-			this.flushed = true;
-		} else {
-			appendFileSync(this.sessionFile, `${JSON.stringify(entry)}\n`);
-		}
+		});
 	}
 
 	private _appendEntry(entry: SessionEntry): void {
@@ -1755,6 +1814,14 @@ export class SessionManager {
 	static create(cwd: string, sessionDir?: string, options?: NewSessionOptions): SessionManager {
 		const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
 		return new SessionManager(cwd, dir, undefined, true, options);
+	}
+
+	/** Load history without repairing or migrating the source file on disk. */
+	static openReadOnly(path: string): SessionManager {
+		const entries = loadEntriesFromFile(path, false);
+		const header = entries[0];
+		if (header?.type !== "session") throw new Error("Invalid session file");
+		return SessionManager.inMemory(header.cwd, undefined, entries);
 	}
 
 	/**

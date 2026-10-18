@@ -191,6 +191,42 @@ function getDefaultAgentDir(): string {
 export async function createAgentSession(options: CreateAgentSessionOptions = {}): Promise<CreateAgentSessionResult> {
 	const cwd = resolvePath(options.cwd ?? options.sessionManager?.getCwd() ?? process.cwd());
 	const agentDir = options.agentDir ? resolvePath(options.agentDir) : getDefaultAgentDir();
+	const manager = options.sessionManager ?? SessionManager.create(cwd, getDefaultSessionDir(cwd, agentDir));
+	const release = manager.acquireWriteLease({ shared: true });
+	try {
+		const result = await createLockedAgentSession({ ...options, sessionManager: manager });
+		const dispose = result.session.dispose.bind(result.session);
+		let disposed = false;
+		result.session.dispose = () => {
+			if (disposed) return;
+			disposed = true;
+			const finish = () => {
+				try {
+					dispose();
+				} finally {
+					release();
+				}
+			};
+			if (result.session.isIdle) finish();
+			else {
+				// Keep persistence connected until tools and post-run work have stopped.
+				void result.session
+					.abort()
+					.catch(() => {})
+					.then(() => result.session.waitForIdle())
+					.then(finish, finish);
+			}
+		};
+		return result;
+	} catch (error) {
+		release();
+		throw error;
+	}
+}
+
+async function createLockedAgentSession(options: CreateAgentSessionOptions): Promise<CreateAgentSessionResult> {
+	const cwd = resolvePath(options.cwd ?? options.sessionManager?.getCwd() ?? process.cwd());
+	const agentDir = options.agentDir ? resolvePath(options.agentDir) : getDefaultAgentDir();
 	let resourceLoader = options.resourceLoader;
 
 	const authPath = options.agentDir ? join(agentDir, "auth.json") : undefined;
