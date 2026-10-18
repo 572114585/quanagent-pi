@@ -25,6 +25,16 @@ npm run start:weixin
 
 owner 与 allowlist 内用户均拥有 Pi 默认完整工具集。普通用户发送的附件限制在其工作目录内，owner 可发送外部路径的附件。工作目录分开存放不构成操作系统沙箱。
 
+## 网页扫码连接
+
+启动 [Pi Web](../../README.web.md) 后，在设置中打开“微信连接”。首次使用先选择已配置凭据的模型，再点击“连接微信”，使用微信扫描页面二维码，并按提示确认或输入配对码。
+
+没有 `config.json` 时，扫码成功后自动将扫码账号的微信用户 ID 设为 owner，白名单为空。已有配置的 owner、白名单和模型保持不变。微信使用原有独立会话和工作目录，网页聊天上下文不会混入微信。
+
+Web 服务自动管理桥接子进程，无需另行运行 `start:weixin`。关闭网页不停止桥接；服务重启后恢复已启用的连接。点击“断开连接”保留凭据和历史，并关闭自动恢复；“重新扫码”先停止旧进程再开始登录。
+
+连接偏好保存在 `<数据目录>/web-control.json`，微信凭据仍由 SDK 存放在 `~/.wechatbot`。网页、`start:weixin`、`login:weixin` 和调试扩展共用数据目录与凭据目录的进程锁；提示占用时先停止其他入口。更新前仍需停止不支持进程锁的旧版桥接。
+
 ## 从原项目迁移
 
 代码已迁入本包；已有配置、会话、文件和任务可继续使用原数据目录。在仓库根目录运行：
@@ -59,7 +69,7 @@ npm run start:weixin
 
 ```powershell
 cd packages/weixin-bridge
-node --import ../coding-agent/src/experimental/source-resolver.ts --test test/startup.test.ts test/scheduling.test.ts
+node --import ../coding-agent/src/experimental/source-resolver.ts --test test/startup.test.ts test/scheduling.test.ts test/control.test.ts
 cd ../..
 npm run check
 ```

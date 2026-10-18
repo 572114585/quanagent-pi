@@ -114,12 +114,21 @@ test("foreground failure uses this turn's events and never a previous reply", as
 test("background timeout configuration defaults to sixty minutes and validates input", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "pi-weixin-config-"));
 	try {
-		await writeFile(join(directory, "config.json"), JSON.stringify({ owner: "owner", allowlist: [] }));
+		await writeFile(
+			join(directory, "config.json"),
+			JSON.stringify({ owner: "owner", allowlist: [], provider: "faux", model: "faux-1" }),
+		);
 		assert.equal((await loadConfig(directory)).schedule.runTimeoutMinutes, 60);
 		for (const minutes of [0, -1, "60", 1.5, 40000]) {
 			await writeFile(
 				join(directory, "config.json"),
-				JSON.stringify({ owner: "owner", allowlist: [], schedule: { runTimeoutMinutes: minutes } }),
+				JSON.stringify({
+					owner: "owner",
+					allowlist: [],
+					provider: "faux",
+					model: "faux-1",
+					schedule: { runTimeoutMinutes: minutes },
+				}),
 			);
 			await assert.rejects(loadConfig(directory), /runTimeoutMinutes/);
 		}

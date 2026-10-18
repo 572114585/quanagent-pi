@@ -13,9 +13,10 @@
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, type ExtensionCommandContext, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { type IncomingMessage, stripMarkdown, WeChatBot } from "@wechatbot/wechatbot";
 import qrTerminal from "qrcode-terminal";
+import { acquireBridgeLocks, bridgePaths } from "../control.ts";
 
 export default function wechatBridge(pi: ExtensionAPI) {
 	let bot: WeChatBot | null = null;
@@ -23,6 +24,18 @@ export default function wechatBridge(pi: ExtensionAPI) {
 	let pendingReply: IncomingMessage | null = null;
 	let assistantText = "";
 	let isStreaming = false;
+	let releaseLocks: (() => Promise<void>) | undefined;
+	let pollWork: Promise<void> | undefined;
+	async function stopWechat(): Promise<void> {
+		bot?.stop();
+		const release = releaseLocks;
+		releaseLocks = undefined;
+		await pollWork;
+		await release?.();
+		bot = null;
+		connected = false;
+		pendingReply = null;
+	}
 
 	// 连接期间向 system prompt 注入微信桥接说明
 	pi.on("before_agent_start", async (event) => {
@@ -113,17 +126,11 @@ Key behaviors:
 			const action = await ctx.ui.select("WeChat is connected", ["Reconnect", "Disconnect", "Status", "Cancel"]);
 			if (action === "Reconnect") {
 				ctx.ui.setStatus("wechat", "wechat: reconnecting...");
-				bot.stop();
-				connected = false;
-				pendingReply = null;
-				bot = null;
+				await stopWechat();
 			} else if (action === "Disconnect") {
-				bot.stop();
-				connected = false;
-				pendingReply = null;
+				await stopWechat();
 				ctx.ui.setStatus("wechat", undefined);
 				ctx.ui.notify("WeChat disconnected", "info");
-				bot = null;
 				return;
 			} else if (action === "Status") {
 				const creds = bot.getCredentials();
@@ -134,12 +141,14 @@ Key behaviors:
 			}
 		}
 
-		// 优先使用已存凭证，避免每次重启都扫码
-		bot = new WeChatBot({ storage: "file", logLevel: "warn" });
-
 		ctx.ui.setStatus("wechat", "wechat: connecting...");
 
 		try {
+			if (bot) await stopWechat();
+			const paths = bridgePaths(getAgentDir());
+			releaseLocks = await acquireBridgeLocks(paths.root, paths.storage);
+			// 优先使用已存凭证，避免每次重启都扫码
+			bot = new WeChatBot({ storage: "file", storageDir: paths.storage, logLevel: "warn" });
 			const creds = await bot.login({
 				force: false,
 				callbacks: {
@@ -198,14 +207,14 @@ Key behaviors:
 				ctx.ui.setStatus("wechat", `wechat: reconnected ${c.accountId}`);
 			});
 
-			bot.start().catch((e) => {
+			pollWork = bot.start().catch((e) => {
 				ctx.ui.setStatus("wechat", `wechat: poll error: ${e instanceof Error ? e.message : e}`);
 				connected = false;
 			});
 		} catch (e) {
 			ctx.ui.setStatus("wechat", undefined);
 			ctx.ui.notify(`Login failed: ${e instanceof Error ? e.message : e}`, "error");
-			bot = null;
+			await stopWechat();
 		}
 	};
 
@@ -215,11 +224,7 @@ Key behaviors:
 	});
 
 	pi.on("session_shutdown", async () => {
-		if (bot) {
-			bot.stop();
-			bot = null;
-		}
-		connected = false;
+		await stopWechat();
 	});
 
 	pi.on("session_start", async (_event, ctx) => {

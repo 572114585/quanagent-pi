@@ -11,8 +11,10 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { WeChatBot } from "@wechatbot/wechatbot";
 import qrTerminal from "qrcode-terminal";
+import { acquireBridgeLocks, bridgePaths } from "../control.ts";
 
 const MAX_ATTEMPTS = 5;
 const VERIFYCODE_FILE = new URL("./verifycode.txt", import.meta.url);
@@ -34,6 +36,14 @@ async function waitForVerifyCode(): Promise<string> {
 	throw new Error("No pairing code provided within 180s");
 }
 
+const paths = bridgePaths(getAgentDir());
+const release = await acquireBridgeLocks(paths.root, paths.storage);
+process.once("SIGINT", () => {
+	void release().finally(() => process.exit(0));
+});
+process.once("SIGTERM", () => {
+	void release().finally(() => process.exit(0));
+});
 for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
 	const bot = new WeChatBot({ storage: "file", logLevel: "info" });
 	try {
@@ -60,6 +70,7 @@ for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
 			"Login OK:",
 			JSON.stringify({ accountId: creds.accountId, userId: creds.userId, baseUrl: creds.baseUrl }, null, 2),
 		);
+		await release();
 		process.exit(0);
 	} catch (err) {
 		console.error(`Attempt ${attempt} failed:`, err instanceof Error ? err.message : String(err));
@@ -71,4 +82,5 @@ for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
 }
 
 console.error("All login attempts failed.");
+await release();
 process.exit(1);
