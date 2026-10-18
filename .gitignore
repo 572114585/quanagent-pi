@@ -45,11 +45,13 @@ qr*.png
 .zed/
 .idea/
 .claude/
+.workbuddy-ai/
 *.swp
 *.swo
 *~
 
 # Package specific
+/apps/web/public/pdfjs/
 .npm/
 coverage/
 .nyc_output/

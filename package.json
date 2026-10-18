@@ -12,6 +12,9 @@
 		"packages/coding-agent/examples/extensions/gondolin"
 	],
 	"scripts": {
+		"start:web": "npm run start --workspace=@earendil-works/pi-web-server --",
+		"dev:web": "npm run dev --workspace=@earendil-works/pi-web",
+		"check:web": "npm run check --workspace=@earendil-works/pi-web",
 		"start:weixin": "npm run start --workspace=@earendil-works/pi-weixin-bridge",
 		"login:weixin": "npm run login --workspace=@earendil-works/pi-weixin-bridge --",
 		"clean": "npm run clean --workspaces",
@@ -20,7 +23,7 @@
 		"build:native:darwin": "npm --prefix packages/tui run build:native:darwin",
 		"build:native:linux": "npm --prefix packages/tui run build:native:linux",
 		"build:native:win32": "npm --prefix packages/tui run build:native:win32",
-		"check": "node scripts/biome-check.mjs --write && npm run check:pinned-deps && npm run check:runtime-deps && npm run check:ts-imports && npm run check:entry-graphs && npm run check:install-lock:coding-agent && tsc --noEmit && npm run check:browser-smoke",
+		"check": "node scripts/biome-check.mjs --write && npm run check:pinned-deps && npm run check:runtime-deps && npm run check:ts-imports && npm run check:entry-graphs && npm run check:install-lock:coding-agent && tsc --noEmit && npm run check:browser-smoke && npm run check:web",
 		"check:browser-smoke": "node scripts/check-browser-smoke.mjs",
 		"check:pinned-deps": "node scripts/check-pinned-deps.mjs",
 		"check:runtime-deps": "node scripts/check-runtime-deps.mjs",
