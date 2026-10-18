@@ -410,7 +410,7 @@ async function runBridge(): Promise<void> {
 
 	function enqueue(userId: string, task: () => Promise<void>): Promise<void> {
 		if (stopping) return Promise.reject(new Error("The bridge is shutting down."));
-		return new Promise((resolve, reject) => {
+		const work = new Promise<void>((resolve, reject) => {
 			const q = queues.get(userId) ?? [];
 			queues.set(userId, q);
 			q.push(async () => {
@@ -423,6 +423,12 @@ async function runBridge(): Promise<void> {
 			});
 			if (q.length === 1) void drainQueue(userId);
 		});
+		activeWork.add(work);
+		void work.then(
+			() => activeWork.delete(work),
+			() => activeWork.delete(work),
+		);
+		return work;
 	}
 
 	async function drainQueue(userId: string): Promise<void> {
@@ -469,6 +475,7 @@ async function runBridge(): Promise<void> {
 		void deliveryWorker?.flush(true, msg.userId);
 
 		const knownTasks = new Set((await scheduleHost.list(msg.userId)).map((task) => task.id));
+		if (stopping) return;
 		const response = await promptForReply(entry.session, prompt.text, { images: prompt.images });
 		await saveUserSession(msg.userId, join(WORKSPACE_ROOT, sanitizeForFs(msg.userId)), entry.session.sessionManager);
 		if (stopping) return;
@@ -527,11 +534,12 @@ async function runBridge(): Promise<void> {
 			return;
 		}
 
-		const work = enqueue(msg.userId, async () => {
+		void enqueue(msg.userId, async () => {
 			if (stopping) return;
 			try {
 				await handleMessage(bot, msg, role);
 			} catch (e) {
+				if (stopping) return;
 				log(`handle failed: ${e instanceof Error ? e.message : e}`);
 				try {
 					await bot.reply(msg, `处理失败：${e instanceof Error ? e.message : String(e)}`);
@@ -540,8 +548,6 @@ async function runBridge(): Promise<void> {
 				}
 			}
 		}).catch((error) => log(`queue: ${error instanceof Error ? error.message : String(error)}`));
-		activeWork.add(work);
-		void work.finally(() => activeWork.delete(work));
 	});
 
 	bot.on("error", (e) => {

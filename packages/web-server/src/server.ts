@@ -116,6 +116,15 @@ export function createWebServer(options: { host: WebHost; auth: WebAuth; staticD
 			json(response, await host.providers.list());
 			return;
 		}
+		const providerModels = /^\/api\/providers\/([A-Za-z0-9._-]+)\/models$/.exec(path);
+		if (providerModels && method === "DELETE") {
+			const body = await readJson(request);
+			const modelId = body.modelId;
+			if (typeof modelId !== "string") throw new HttpError(400, "invalid_model");
+			await host.configure(() => host.providers.removeModel(providerModels[1], modelId));
+			json(response, {});
+			return;
+		}
 		const provider = /^\/api\/providers\/([A-Za-z0-9._-]+)$/.exec(path);
 		if (provider && (method === "PUT" || method === "DELETE")) {
 			const body = method === "PUT" ? await readJson(request) : undefined;

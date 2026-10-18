@@ -166,8 +166,8 @@ export class WeixinManager {
 				this.child = child;
 				this.exited = new Promise<void>((resolveExit) => {
 					const finish = () => {
-						this.codeReply?.resolve(false);
 						if (this.child === child) {
+							this.codeReply?.resolve(false);
 							this.child = undefined;
 							if (this.status.phase !== "stopping" && this.status.phase !== "error")
 								this.status = { phase: "error", error: "bridge_exited" };

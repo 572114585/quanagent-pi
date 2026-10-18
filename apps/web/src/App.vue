@@ -299,10 +299,7 @@ onMounted(() => {
           <Menu :size="20" />
         </button>
         <div>
-          <strong>{{ chat.view?.name || "新对话" }}</strong
-          ><span class="workspace-path" :title="chat.cwd"
-            ><Terminal :size="12" />{{ chat.cwd }}</span
-          >
+          <strong>{{ chat.view?.name || "新对话" }}</strong>
         </div>
         <span class="connection">{{
           chat.connection ||

@@ -8,7 +8,7 @@ import type { BridgeCommand, WeixinStatus } from "./protocol.ts";
 export function bridgePaths(agentDir: string) {
 	return {
 		root: resolve(process.env.PI_WEIXIN_BRIDGE_HOME ?? join(agentDir, "weixin-bridge")),
-		storage: join(homedir(), ".wechatbot"),
+		storage: resolve(process.env.PI_WEIXIN_STORAGE_DIR ?? join(homedir(), ".wechatbot")),
 	};
 }
 

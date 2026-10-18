@@ -51,6 +51,7 @@ const errors: Record<string, string> = {
   empty_message: "请输入消息或添加附件",
   empty_configuration: "请填写密钥或自定义接口配置",
   invalid_url: "请填写有效的 API 地址，避免在地址中放入密钥",
+  model_not_found: "这个模型配置已不存在，请刷新后重试",
   bridge_busy: "微信桥接正在被其他进程使用，请先停止该进程",
   configuration_invalid: "微信桥接配置无效，请检查服务端 config.json",
   model_unavailable: "请选择已配置凭据的可用模型",
@@ -314,6 +315,12 @@ export const useChat = defineStore("chat", () => {
     await api(`/providers/${encodeURIComponent(id)}`, "DELETE");
     await loadModels();
   }
+  async function removeModel(providerId: string, modelId: string) {
+    await api(`/providers/${encodeURIComponent(providerId)}/models`, "DELETE", {
+      modelId,
+    });
+    await loadModels();
+  }
   return {
     loggedIn,
     ready,
@@ -339,6 +346,7 @@ export const useChat = defineStore("chat", () => {
     upload,
     saveProvider,
     removeKey,
+    removeModel,
     weixinStatus: () => api<WeixinSnapshot>("/weixin"),
     connectWeixin: (body: { force?: boolean; provider?: string; model?: string }) => api<WeixinSnapshot>("/weixin/connect", "POST", body),
     disconnectWeixin: () => api<WeixinSnapshot>("/weixin/disconnect", "POST"),

@@ -132,6 +132,38 @@ export class ProviderSettings {
 			});
 		}
 	}
+	async removeModel(providerId: string, modelId: string): Promise<void> {
+		if (
+			!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(providerId) ||
+			["__proto__", "constructor", "prototype"].includes(providerId)
+		)
+			throw new HttpError(400, "invalid_provider");
+		if (!modelId.trim()) throw new HttpError(400, "invalid_model");
+		await mkdir(dirname(this.path), { recursive: true });
+		const release = await lockfile.lock(dirname(this.path), { lockfilePath: `${this.path}.lock`, retries: 0 });
+		try {
+			let current: Record<string, unknown> = {};
+			try {
+				current = object(JSON.parse(stripJsonComments((await readFile(this.path, "utf8")).replace(/^\uFEFF/, ""))));
+			} catch (error) {
+				if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+			}
+			const providers = object(current.providers);
+			const provider = object(providers[providerId]);
+			const models: unknown[] = Array.isArray(provider.models) ? [...provider.models] : [];
+			const index = models.findIndex((entry) => object(entry).id === modelId);
+			if (index < 0) throw new HttpError(404, "model_not_found");
+			models.splice(index, 1);
+			const next = { ...current, providers: { ...providers, [providerId]: { ...provider, models } } };
+			if (!validate.Check(next)) throw new HttpError(400, "invalid_model_configuration");
+			const temporary = `${this.path}.${process.pid}.tmp`;
+			await writeFile(temporary, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+			await rename(temporary, this.path);
+		} finally {
+			await release();
+		}
+		await this.runtime.refresh({ allowNetwork: false });
+	}
 	async removeKey(providerId: string): Promise<void> {
 		await this.runtime.logout(providerId);
 	}

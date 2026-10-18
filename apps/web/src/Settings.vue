@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { X, KeyRound } from "lucide-vue-next";
-import { useChat } from "./chat.ts";
+import { useChat, type ProviderOption } from "./chat.ts";
 import WeixinSettings from "./WeixinSettings.vue";
 defineEmits<{ close: [] }>();
 const chat = useChat();
@@ -12,6 +12,10 @@ const baseUrl = ref("");
 const api = ref("openai-completions");
 const modelId = ref("");
 const modelName = ref("");
+type ConfiguredModel = NonNullable<
+  ProviderOption["configuration"]
+>["models"][number];
+const configuredModels = ref<ConfiguredModel[]>([]);
 const reasoning = ref(false);
 const vision = ref(false);
 const contextWindow = ref(128000);
@@ -19,20 +23,38 @@ const maxTokens = ref(4096);
 const saving = ref(false);
 const message = ref("");
 const keyToRemove = ref("");
-watch(providerId, (value) => {
-  apiKey.value = "";
-  const config = chat.providers.find(
-    (provider) => provider.id === value,
-  )?.configuration;
-  const model = config?.models[0];
-  baseUrl.value = config?.baseUrl ?? "";
-  api.value = config?.api ?? "openai-completions";
+const modelToRemove = ref("");
+
+function editModel(model?: ConfiguredModel) {
   modelId.value = model?.id ?? "";
   modelName.value = model?.name ?? "";
   reasoning.value = model?.reasoning ?? false;
   vision.value = model?.vision ?? false;
   contextWindow.value = model?.contextWindow ?? 128000;
   maxTokens.value = model?.maxTokens ?? 4096;
+}
+
+function refreshConfiguredModels(preferredId?: string) {
+  const config = chat.providers.find(
+    (provider) => provider.id === providerId.value,
+  )?.configuration;
+  configuredModels.value = config?.models ?? [];
+  editModel(
+    configuredModels.value.find((model) => model.id === preferredId) ??
+      configuredModels.value[0],
+  );
+}
+
+watch(providerId, (value) => {
+  apiKey.value = "";
+  const config = chat.providers.find(
+    (provider) => provider.id === value,
+  )?.configuration;
+  baseUrl.value = config?.baseUrl ?? "";
+  api.value = config?.api ?? "openai-completions";
+  configuredModels.value = config?.models ?? [];
+  editModel(configuredModels.value[0]);
+  modelToRemove.value = "";
 });
 async function save() {
   saving.value = true;
@@ -54,7 +76,26 @@ async function save() {
         : {}),
     });
     apiKey.value = "";
+    refreshConfiguredModels(modelId.value.trim());
     message.value = "配置已保存";
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    saving.value = false;
+  }
+}
+function addModel() {
+  modelToRemove.value = "";
+  editModel();
+}
+async function removeModel(id: string) {
+  saving.value = true;
+  message.value = "";
+  try {
+    await chat.removeModel(providerId.value, id);
+    modelToRemove.value = "";
+    refreshConfiguredModels();
+    message.value = "模型已删除";
   } catch (error) {
     message.value = error instanceof Error ? error.message : String(error);
   } finally {
@@ -159,6 +200,60 @@ async function removeKey(id: string) {
                 <option value="openai-responses">Responses</option>
               </select></label
             >
+            <div class="configured-models">
+              <div class="configured-models-header">
+                <span>已配置模型</span>
+                <button type="button" class="text-button" @click="addModel">
+                  添加模型
+                </button>
+              </div>
+              <p v-if="!configuredModels.length" class="muted model-empty">
+                尚未添加模型。添加后可在聊天输入框中切换。
+              </p>
+              <div
+                v-for="model in configuredModels"
+                :key="model.id"
+                class="configured-model"
+              >
+                <button
+                  type="button"
+                  class="configured-model-select"
+                  :class="{ selected: model.id === modelId }"
+                  :aria-pressed="model.id === modelId"
+                  @click="editModel(model)"
+                >
+                  <strong>{{ model.name || model.id }}</strong>
+                  <small>{{ model.id }}</small>
+                </button>
+                <template v-if="modelToRemove === model.id">
+                  <button
+                    type="button"
+                    class="text-button"
+                    @click="modelToRemove = ''"
+                  >取消</button>
+                  <button
+                    type="button"
+                    class="text-button danger"
+                    :disabled="saving"
+                    @click="removeModel(model.id)"
+                  >删除</button>
+                </template>
+                <button
+                  v-else
+                  type="button"
+                  class="text-button danger"
+                  :disabled="saving"
+                  @click="modelToRemove = model.id"
+                >删除</button>
+              </div>
+            </div>
+            <p class="muted model-editor-title">
+              {{
+                configuredModels.some((model) => model.id === modelId)
+                  ? "编辑模型"
+                  : "添加模型"
+              }}
+            </p>
             <label
               >模型 ID<input
                 v-model="modelId"
@@ -192,7 +287,7 @@ async function removeKey(id: string) {
         </details>
         <p v-if="message" role="status">{{ message }}</p>
         <button class="primary" :disabled="saving || !!chat.view?.runId">
-          {{ saving ? "正在保存" : "保存配置" }}
+          {{ saving ? "正在保存" : baseUrl ? "保存接口和模型" : "保存凭据" }}
         </button>
       </form>
       </div>

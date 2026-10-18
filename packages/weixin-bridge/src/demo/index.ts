@@ -14,7 +14,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { type ExtensionAPI, type ExtensionCommandContext, getAgentDir } from "@earendil-works/pi-coding-agent";
-import { type IncomingMessage, stripMarkdown, WeChatBot } from "@wechatbot/wechatbot";
+import { type Credentials, type IncomingMessage, stripMarkdown, WeChatBot } from "@wechatbot/wechatbot";
 import qrTerminal from "qrcode-terminal";
 import { acquireBridgeLocks, bridgePaths } from "../control.ts";
 
@@ -26,15 +26,24 @@ export default function wechatBridge(pi: ExtensionAPI) {
 	let isStreaming = false;
 	let releaseLocks: (() => Promise<void>) | undefined;
 	let pollWork: Promise<void> | undefined;
+	let loginWork: Promise<Credentials> | undefined;
 	async function stopWechat(): Promise<void> {
 		bot?.stop();
 		const release = releaseLocks;
+		const login = loginWork;
+		loginWork = undefined;
 		releaseLocks = undefined;
-		await pollWork;
-		await release?.();
 		bot = null;
 		connected = false;
 		pendingReply = null;
+		await pollWork;
+		if (login) {
+			// SDK login cannot be aborted. Keep ownership until its possible credential write finishes.
+			void login
+				.catch(() => {})
+				.then(() => release?.())
+				.catch(() => {});
+		} else await release?.();
 	}
 
 	// 连接期间向 system prompt 注入微信桥接说明
@@ -149,7 +158,8 @@ Key behaviors:
 			releaseLocks = await acquireBridgeLocks(paths.root, paths.storage);
 			// 优先使用已存凭证，避免每次重启都扫码
 			bot = new WeChatBot({ storage: "file", storageDir: paths.storage, logLevel: "warn" });
-			const creds = await bot.login({
+			const connectingBot = bot;
+			loginWork = bot.login({
 				force: false,
 				callbacks: {
 					onQrUrl: (url) => {
@@ -170,6 +180,9 @@ Key behaviors:
 					},
 				},
 			});
+			const creds = await loginWork;
+			loginWork = undefined;
+			if (bot !== connectingBot) return;
 
 			ctx.ui.setStatus("wechat", `wechat: ${creds.accountId}`);
 			ctx.ui.notify(`WeChat connected\nAccount: ${creds.accountId}`, "info");

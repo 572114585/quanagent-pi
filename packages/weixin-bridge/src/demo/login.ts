@@ -45,7 +45,7 @@ process.once("SIGTERM", () => {
 	void release().finally(() => process.exit(0));
 });
 for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-	const bot = new WeChatBot({ storage: "file", logLevel: "info" });
+	const bot = new WeChatBot({ storage: "file", storageDir: paths.storage, logLevel: "info" });
 	try {
 		console.error(`\n=== Login attempt ${attempt}/${MAX_ATTEMPTS} ===`);
 		const creds = await bot.login({

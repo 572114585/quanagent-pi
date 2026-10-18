@@ -84,7 +84,7 @@ npm run dev:web
 
 ### 4. 配置模型并开始聊天
 
-打开侧栏“模型设置”，选择已有 Provider 并保存 API Key，或填写自定义 Provider、Base URL、协议和模型 ID。自定义接口支持 Chat Completions 和 Responses，可设置思考、图片、上下文和输出长度能力。
+打开侧栏“模型设置”，选择已有 Provider 并保存 API Key，或填写自定义 Provider、Base URL、协议和模型 ID。一个自定义 Provider 可添加多个模型；点击模型条目可编辑，删除会移除 Pi 的自定义模型配置。自定义接口支持 Chat Completions 和 Responses，可设置思考、图片、上下文和输出长度能力。
 
 保存后选择模型发送消息。任务运行期间禁止修改模型配置。密钥只存放在服务端，浏览器接口不回传密钥。
 

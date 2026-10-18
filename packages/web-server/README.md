@@ -80,9 +80,17 @@ server {
 - 同一份会话需要所有写入进程都使用支持写锁的这份 Pi。旧版本进程不会遵守新增的占用锁。
 - 会话归档保存在原会话目录的 `.archive`，移回原目录即可恢复；此操作也会影响终端会话列表。
 - 首次使用包含项目扩展或技能的目录时，网页要求确认是否信任。遵守已有 Pi 信任配置；网页中的临时选择只对当前服务进程有效。
-- 在“模型设置”添加 Provider 密钥，或配置 OpenAI 兼容服务的地址、模型 ID、Chat Completions/Responses 协议和能力。密钥只写入服务端 `auth.json`，接口不会返回密钥。已有 OAuth 登录可继续使用；网页新增登录目前支持 API Key。
+- 在“模型设置”添加 Provider 密钥，或配置 OpenAI 兼容服务的地址、多个模型 ID、Chat Completions/Responses 协议和能力。可在设置中新增、编辑和删除模型，并在聊天输入框切换。密钥只写入服务端 `auth.json`，接口不会返回密钥。已有 OAuth 登录可继续使用；网页新增登录目前支持 API Key。
 - 模型配置写入 Pi 的 `models.json`，不会覆盖其他 Provider 和未编辑字段。任务运行时禁止修改配置。终端刷新模型配置后可使用网页保存的接口。
 - API 地址中的凭据、查询参数和片段不通过网页编辑；复杂鉴权和自定义请求头继续使用 Pi 配置文件。
+
+## 微信连接
+
+在设置的“微信连接”页签中选择模型并扫码，必要时输入微信显示的配对码。Web 托管独立的桥接子进程，关闭页面不停止桥接，服务重启后恢复已启用连接；主动断开会保留历史和凭据，并关闭自动恢复。
+
+首次没有桥接配置时，扫码账号自动成为 owner，其他账号默认无权使用。已有 owner、白名单和模型配置保持原样；微信会话及工作目录独立于网页聊天。详细配置见 [微信桥接说明](../weixin-bridge/README.md#网页扫码连接)。
+
+接口为 `GET /api/weixin`、`POST /api/weixin/connect`、`POST /api/weixin/verify-code`、`POST /api/weixin/disconnect`，沿用管理员登录和写操作 Origin 校验。状态接口不回传令牌；配对码只提交给当前登录尝试及当前配对码请求。
 
 ## 文件与扩展
 
@@ -98,11 +106,11 @@ server {
 
 ```powershell
 cd packages/web-server
-node --import ../coding-agent/src/experimental/source-resolver.ts --test test/web.test.ts
+node --import ../coding-agent/src/experimental/source-resolver.ts --test test/web.test.ts test/weixin.test.ts
 cd ../..
 npm run check
 ```
 
-主要接口：`POST /api/auth/login`、`POST /api/auth/logout`、`GET /api/auth`、`GET /api/models`、`PUT/DELETE /api/providers/:id`、会话 CRUD `/api/sessions`、`POST /api/sessions/:id/messages`、`GET /api/sessions/:id/events`、`POST /api/sessions/:id/stop`、`POST /api/sessions/:id/dialogs/:requestId`、`POST /api/sessions/:id/uploads`、`GET /api/files/:id`。
+主要接口：`POST /api/auth/login`、`POST /api/auth/logout`、`GET /api/auth`、`GET /api/models`、`PUT/DELETE /api/providers/:id`、`DELETE /api/providers/:id/models`、会话 CRUD `/api/sessions`、`POST /api/sessions/:id/messages`、`GET /api/sessions/:id/events`、`POST /api/sessions/:id/stop`、`POST /api/sessions/:id/dialogs/:requestId`、`POST /api/sessions/:id/uploads`、`GET /api/files/:id`。
 
 SSE 使用 Pi 原生 JSON 事件，并携带会话、运行 ID 和事件游标。重连优先使用 `Last-Event-ID`，游标过期或服务重启时发送快照。只有 `agent_settled` 表示 Pi 不会继续自动工作；`run_finished` 表示 Web 入口也已完成清理并释放会话。

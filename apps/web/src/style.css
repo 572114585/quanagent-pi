@@ -392,18 +392,6 @@ main {
   font-size: 13px;
   font-weight: 500;
 }
-.workspace-path {
-  font-size: 10px;
-  color: var(--subtle);
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  max-width: 45vw;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-top: 5px;
-}
 .connection {
   margin-left: auto;
   font-size: 11px;
@@ -864,6 +852,55 @@ main {
 .provider-list small {
   margin-left: auto;
 }
+.configured-models {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.configured-models-header,
+.configured-model {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.configured-models-header {
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+}
+.configured-model {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 5px 8px;
+}
+.configured-model-select {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border: 0;
+  background: transparent;
+  padding: 5px 3px;
+  text-align: left;
+}
+.configured-model-select.selected {
+  color: var(--accent);
+}
+.configured-model-select strong,
+.configured-model-select small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-empty {
+  font-size: 11px;
+}
+.model-editor-title {
+  font-size: 11px;
+  font-weight: 600;
+}
 .sidebar-backdrop {
   display: none;
 }
@@ -908,10 +945,6 @@ main {
     height: 62px;
     padding: 0 13px;
     gap: 9px;
-  }
-  .workspace-path {
-    max-width: 60vw;
-    font-size: 9px;
   }
   .connection {
     font-size: 10px;
